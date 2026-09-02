@@ -30,6 +30,9 @@ data class TripEntity(
     val additionalChargeYen: Long,
     val paymentMethod: String,
     val note: String?,
+    val status: String = "COMPLETED",
+    val lowSpeedSeconds: Long = 0,
+    val revenueIncluded: Boolean = true,
 )
 
 @Entity(

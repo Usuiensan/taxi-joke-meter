@@ -37,4 +37,6 @@ class FareMeasurementSession(fareRule: FareRule) {
         result = null
         return completed
     }
+
+    fun currentResult(): MeasurementAccumulation? = result
 }

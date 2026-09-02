@@ -10,7 +10,7 @@ import androidx.room.TypeConverters
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleDao
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleEntity
 
-@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class, DrivingSampleEntity::class], version = 6, exportSchema = false)
+@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class, DrivingSampleEntity::class], version = 7, exportSchema = false)
 @TypeConverters(DutyConverters::class)
 abstract class DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao
@@ -18,7 +18,7 @@ abstract class DutyDatabase : RoomDatabase() {
 
     companion object {
         fun build(context: Context, databaseName: String = "duty.db"): DutyDatabase = Room.databaseBuilder(context, DutyDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .build()
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -65,6 +65,19 @@ abstract class DutyDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX index_driving_samples_dutySessionId ON driving_samples(dutySessionId)")
                 db.execSQL("CREATE INDEX index_driving_samples_timestampEpochSecond_timestampNano ON driving_samples(timestampEpochSecond, timestampNano)")
             }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                if (!db.hasColumn("trips", "status")) db.execSQL("ALTER TABLE trips ADD COLUMN status TEXT NOT NULL DEFAULT 'COMPLETED'")
+                if (!db.hasColumn("trips", "lowSpeedSeconds")) db.execSQL("ALTER TABLE trips ADD COLUMN lowSpeedSeconds INTEGER NOT NULL DEFAULT 0")
+                if (!db.hasColumn("trips", "revenueIncluded")) db.execSQL("ALTER TABLE trips ADD COLUMN revenueIncluded INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        private fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean = query("PRAGMA table_info($table)").use { cursor ->
+            val index = cursor.getColumnIndex("name")
+            generateSequence { if (cursor.moveToNext()) cursor.getString(index) else null }.any { it == column }
         }
     }
 }

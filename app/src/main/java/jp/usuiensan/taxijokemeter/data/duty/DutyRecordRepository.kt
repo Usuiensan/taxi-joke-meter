@@ -11,6 +11,8 @@ import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.PaymentMethod
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.SafetyRoadModeChange
+import jp.usuiensan.taxijokemeter.domain.model.TripStatus
+import java.time.Instant
 
 class DutyRecordRepository(private val database: DutyDatabase) {
     suspend fun save(session: DutySession) = database.withTransaction {
@@ -31,11 +33,19 @@ class DutyRecordRepository(private val database: DutyDatabase) {
     suspend fun appendEvent(sessionId: String, event: DutyEvent) {
         database.dutyDao().insertEvent(event.toEntity(sessionId))
     }
+
+    suspend fun appendTrip(sessionId: String, trip: Trip) {
+        database.dutyDao().insertTrip(trip.toEntity(sessionId))
+    }
+
+    suspend fun markEnded(id: String, endedAt: Instant) {
+        database.dutyDao().updateEndedAt(id, endedAt)
+    }
 }
 
-private fun Trip.toEntity(sessionId: String) = TripEntity(id, sessionId, pickupAt, dropoffAt, pickupPlace.latitude(), pickupPlace.longitude(), pickupPlace.accuracy(), pickupPlace.recordedAt(), pickupPlace.address(), pickupPlace.precision(), pickupPlace.sourceName(), dropoffPlace.latitude(), dropoffPlace.longitude(), dropoffPlace.accuracy(), dropoffPlace.recordedAt(), dropoffPlace.address(), dropoffPlace.precision(), dropoffPlace.sourceName(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, paymentMethod.name, note)
+private fun Trip.toEntity(sessionId: String) = TripEntity(id, sessionId, pickupAt, dropoffAt, pickupPlace.latitude(), pickupPlace.longitude(), pickupPlace.accuracy(), pickupPlace.recordedAt(), pickupPlace.address(), pickupPlace.precision(), pickupPlace.sourceName(), dropoffPlace.latitude(), dropoffPlace.longitude(), dropoffPlace.accuracy(), dropoffPlace.recordedAt(), dropoffPlace.address(), dropoffPlace.precision(), dropoffPlace.sourceName(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, paymentMethod.name, note, status.name, lowSpeedSeconds, revenueIncluded)
 
-private fun TripEntity.toDomain() = Trip(id, pickupAt, dropoffAt, pickupPlace(), dropoffPlace(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, PaymentMethod.valueOf(paymentMethod), note)
+private fun TripEntity.toDomain() = Trip(id, pickupAt, dropoffAt, pickupPlace(), dropoffPlace(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, PaymentMethod.valueOf(paymentMethod), note, TripStatus.valueOf(status), lowSpeedSeconds, revenueIncluded)
 
 private fun DutyEvent.toEntity(sessionId: String) = DutyEventEntity(id, sessionId, type.name, occurredAt, place?.latitude, place?.longitude, place?.accuracyMeters, place?.recordedAt, place?.addressText, place?.locationPrecision?.name, place?.source?.name, safetyRoadModeChange?.from?.name, safetyRoadModeChange?.to?.name, note)
 

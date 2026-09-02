@@ -1,0 +1,83 @@
+package jp.usuiensan.taxijokemeter.data.meter
+
+import android.content.Context
+import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
+import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
+import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
+import jp.usuiensan.taxijokemeter.domain.fare.FuelCostFareFactory
+import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
+import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
+import jp.usuiensan.taxijokemeter.domain.model.DutyEvent
+import jp.usuiensan.taxijokemeter.domain.model.DutyEventType
+import jp.usuiensan.taxijokemeter.domain.model.EnergyCostProfile
+import jp.usuiensan.taxijokemeter.domain.model.EnergyEfficiency
+import jp.usuiensan.taxijokemeter.domain.model.FuelType
+import jp.usuiensan.taxijokemeter.domain.model.Powertrain
+import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.model.Trip
+import jp.usuiensan.taxijokemeter.domain.model.TripStatus
+import jp.usuiensan.taxijokemeter.domain.road.RoadModeController
+import jp.usuiensan.taxijokemeter.domain.road.RoadModeAction
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.time.Instant
+import java.util.UUID
+
+class MeterController(private val context: Context) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val measurement = DutyMeasurementController(context)
+    private val machine = MeterStateMachine()
+    private var sessionId: String? = null
+    private var trip: Trip? = null
+    private val fareRule = FuelCostFareFactory.create(EnergyCostProfile(FuelType.REGULAR, Powertrain.ICE, 180.0, EnergyEfficiency.KmPerLiter(15.0)), 1_000, 200, 10)
+
+    fun dispatch(action: MeterAction) {
+        val before = machine.state
+        val after = machine.dispatch(action)
+        when (action) {
+            MeterAction.DEPART -> {
+                val id = measurement.start(after.roadMode, jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY, fareRule)
+                sessionId = id
+                MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, meterState = after.meterState, dutySessionId = id) }
+                event(DutyEventType.DEPARTURE)
+            }
+            MeterAction.OCCUPIED -> {
+                if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) {
+                    val now = Instant.now()
+                    trip = Trip(UUID.randomUUID().toString(), now, null, null, null, 0, 0, 0, 0, jp.usuiensan.taxijokemeter.domain.model.PaymentMethod.UNKNOWN, null)
+                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, tripStartedAt = now, fareYen = fareRule.initialFareYen) }
+                    measurement.beginFareMeasurement(); event(DutyEventType.PICKUP)
+                }
+            }
+            MeterAction.PAYMENT -> { measurement.endFareMeasurement(); MeterRuntimeStore.update { it.copy(meterState = after.meterState) }; event(DutyEventType.DROPOFF) }
+            MeterAction.EMPTY -> {
+                if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) finishTrip(TripStatus.VOIDED, false)
+                else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) finishTrip(TripStatus.COMPLETED, true)
+                MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.fareYen, chargeableDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.lowSpeedSeconds, tripStartedAt = null) }
+            }
+            MeterAction.DEADHEAD -> { MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }; event(DutyEventType.DEADHEAD_START) }
+            MeterAction.BREAK -> { MeterRuntimeStore.update { it.copy(dutyActivity = after.dutyActivity, menu = after.menu) }; event(DutyEventType.BREAK_START) }
+            MeterAction.RESUME -> { MeterRuntimeStore.update { it.copy(dutyActivity = after.dutyActivity, menu = after.menu) }; event(DutyEventType.BREAK_END) }
+            MeterAction.ARRIVE -> { measurement.stop(); MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, menu = after.menu) }; event(DutyEventType.ARRIVAL); endDuty() }
+        }
+    }
+
+    fun setRoadMode(mode: RoadMode) { machine.setRoadMode(mode); MeterRuntimeStore.update { it.copy(roadMode = mode) }; measurement.updateState(mode, jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY) }
+
+    private fun finishTrip(status: TripStatus, revenueIncluded: Boolean) {
+        val current = trip ?: return
+        val value = MeterRuntimeStore.snapshot.value
+        trip = current.copy(dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.fareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded)
+        val session = sessionId ?: return
+        trip?.let { completed -> scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).appendTrip(session, completed) } finally { db.close() } } }
+        trip = null
+    }
+
+    private fun event(type: DutyEventType) { val session = sessionId ?: return; scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).appendEvent(session, DutyEvent(UUID.randomUUID().toString(), type, Instant.now(), null, null)) } finally { db.close() } } }
+
+    private fun endDuty() { val session = sessionId ?: return; scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }
+
+    fun shortRoadModePress() { setRoadMode(RoadModeController().transition(MeterRuntimeStore.snapshot.value.roadMode, RoadModeAction.SHORT_PRESS).nextMode) }
+}

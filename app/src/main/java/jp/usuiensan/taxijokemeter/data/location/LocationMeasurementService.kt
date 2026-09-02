@@ -25,6 +25,8 @@ import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
+import jp.usuiensan.taxijokemeter.domain.fare.FareCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,10 +57,22 @@ class LocationMeasurementService : Service() {
             val accumulation = fareMeasurement.add(sample)
             runtimeState = runtimeState.copy(previousSample = sample)
             MeasurementDebugStore.update { it.copy(health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()), latestAccuracyMeters = sample.accuracyMeters, latestSpeedMps = sample.speedMps, roadMode = sample.roadMode.name) }
+            MeterRuntimeStore.update { current -> current.copy(
+                roadMode = sample.roadMode,
+                gpsHealth = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()),
+                latestAccuracyMeters = sample.accuracyMeters,
+                latestSpeedMps = sample.speedMps,
+                chargeableDistanceMeters = accumulation?.chargeableDistanceMeters ?: current.chargeableDistanceMeters,
+                lowSpeedSeconds = accumulation?.lowSpeedSeconds ?: current.lowSpeedSeconds,
+                fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.fareYen,
+            ) }
             scope.launch {
                 repository.save(sample)
                 val count = savedSampleCount.incrementAndGet()
-                healthHandler.post { MeasurementDebugStore.update { it.copy(savedSampleCount = count) } }
+                healthHandler.post {
+                    MeasurementDebugStore.update { it.copy(savedSampleCount = count) }
+                    MeterRuntimeStore.update { it.copy(savedSampleCount = count) }
+                }
                 Log.i(TAG, "GPS状態=${healthTracker.healthAt(SystemClock.elapsedRealtimeNanos())} 測位品質=${sample.measurementQuality} 速度=${sample.speedMps ?: "不明"}m/s accuracy=${sample.accuracyMeters}m RoadMode=${sample.roadMode} 累積課金距離=${accumulation?.chargeableDistanceMeters ?: 0}m 累積低速時間=${accumulation?.lowSpeedSeconds ?: 0}秒 保存件数=$count")
             }
         }
@@ -94,6 +108,7 @@ class LocationMeasurementService : Service() {
             fareMeasurement = FareMeasurementSession(fareRule)
             savedSampleCount.set(0)
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, roadMode = runtimeState.sampleState.roadMode.name))
+            MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY, roadMode = runtimeState.sampleState.roadMode) }
             startForegroundCompat()
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "GPS状態=権限なし")
@@ -110,11 +125,15 @@ class LocationMeasurementService : Service() {
                 OccupancyState.valueOf(intent.getStringExtra(EXTRA_OCCUPANCY_STATE) ?: runtimeState.sampleState.occupancyState.name),
             )
             MeasurementDebugStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode.name) }
+            MeterRuntimeStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode) }
         } else if (intent?.action == ACTION_BEGIN_FARE) {
             fareMeasurement.begin()
+            MeterRuntimeStore.update { it.copy(meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) }
             Log.i(TAG, "料金計測=開始")
         } else if (intent?.action == ACTION_END_FARE) {
-            Log.i(TAG, "料金計測=終了 結果=${fareMeasurement.end() ?: "未開始"}")
+            val result = fareMeasurement.end()
+            result?.let { MeterRuntimeStore.update { state -> state.copy(fareYen = FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds), chargeableDistanceMeters = it.chargeableDistanceMeters, lowSpeedSeconds = it.lowSpeedSeconds) } }
+            Log.i(TAG, "料金計測=終了 結果=${result ?: "未開始"}")
         }
         return START_NOT_STICKY
     }

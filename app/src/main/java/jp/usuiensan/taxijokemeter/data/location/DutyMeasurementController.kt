@@ -19,8 +19,7 @@ import java.util.UUID
 class DutyMeasurementController(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun start(roadMode: RoadMode, occupancyState: OccupancyState, fareRule: FareRule) {
-        val sessionId = UUID.randomUUID().toString()
+    fun start(roadMode: RoadMode, occupancyState: OccupancyState, fareRule: FareRule, sessionId: String = UUID.randomUUID().toString()): String {
         val database = DutyDatabase.build(context)
         scope.launch {
             DutyRecordRepository(database).save(DutySession(sessionId, Instant.now(), null))
@@ -38,6 +37,7 @@ class DutyMeasurementController(private val context: Context) {
             putExtra(LocationMeasurementService.EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS, fareRule.lowSpeedTimeIncrementSeconds)
             }) }
         }
+        return sessionId
     }
 
     fun stop() {

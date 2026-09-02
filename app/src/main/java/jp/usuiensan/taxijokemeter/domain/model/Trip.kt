@@ -16,10 +16,14 @@ data class Trip(
     val additionalChargeYen: Long,
     val paymentMethod: PaymentMethod,
     val note: String?,
+    val status: TripStatus = TripStatus.COMPLETED,
+    val lowSpeedSeconds: Long = 0,
+    val revenueIncluded: Boolean = true,
 ) {
     init {
         require(passengerCount >= 0)
         require(operatingDistanceMeters >= 0)
         require(fareYen >= 0 && additionalChargeYen >= 0)
+        require(lowSpeedSeconds >= 0)
     }
 }

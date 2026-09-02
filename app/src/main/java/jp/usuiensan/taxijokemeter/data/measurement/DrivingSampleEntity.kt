@@ -1,11 +1,11 @@
 package jp.usuiensan.taxijokemeter.data.measurement
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(tableName = "driving_samples")
+@Entity(tableName = "driving_samples", primaryKeys = ["timestampEpochSecond", "timestampNano"])
 data class DrivingSampleEntity(
-    @PrimaryKey val timestamp: Long,
+    val timestampEpochSecond: Long,
+    val timestampNano: Int,
     val latitude: Double,
     val longitude: Double,
     val accuracyMeters: Double,

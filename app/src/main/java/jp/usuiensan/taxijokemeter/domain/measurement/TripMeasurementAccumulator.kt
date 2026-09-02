@@ -19,16 +19,30 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
     private var lowSpeedDuration = Duration.ZERO
 
     fun add(previous: DrivingSample, current: DrivingSample): MeasurementAccumulation {
-        val elapsed = Duration.between(previous.timestamp, current.timestamp)
-        if (previous.isValid && current.isValid && !elapsed.isNegative && !elapsed.isZero) {
+        if (previous.isValid && current.isValid) {
+            val elapsed = elapsedBetween(previous, current)
             val distance = haversineMeters(previous, current)
-            if (current.speedMps * 3.6 < fareRule.lowSpeedLimitKmh) {
+            val speedMps = current.speedMps ?: monotonicElapsed(previous, current)
+                ?.takeIf { it > Duration.ZERO }
+                ?.let { distance / it.toNanos() * 1_000_000_000.0 }
+            if (elapsed != null && !elapsed.isZero && speedMps != null && speedMps * 3.6 < fareRule.lowSpeedLimitKmh) {
                 lowSpeedDuration = lowSpeedDuration.plus(elapsed)
-            } else {
+            } else if (elapsed != null && !elapsed.isZero && speedMps != null) {
                 distanceMeters += distance
             }
         }
         return MeasurementAccumulation(distanceMeters.roundToLong(), lowSpeedDuration.seconds)
+    }
+
+    private fun elapsedBetween(previous: DrivingSample, current: DrivingSample): Duration? {
+        monotonicElapsed(previous, current)?.let { return it }
+        if (previous.elapsedRealtimeNanos != null && current.elapsedRealtimeNanos != null) return null
+        return Duration.between(previous.timestamp, current.timestamp).takeIf { !it.isNegative && !it.isZero }
+    }
+
+    private fun monotonicElapsed(previous: DrivingSample, current: DrivingSample): Duration? {
+        if (previous.elapsedRealtimeNanos == null || current.elapsedRealtimeNanos == null) return null
+        return (current.elapsedRealtimeNanos - previous.elapsedRealtimeNanos).takeIf { it > 0 }?.let(Duration::ofNanos)
     }
 
     private fun haversineMeters(first: DrivingSample, second: DrivingSample): Double {

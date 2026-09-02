@@ -27,7 +27,7 @@ class HighwayModeReminderEvaluator(
         val lowSpeedSeconds = samples.sortedBy { it.timestamp }.zipWithNext().sumOf { (sample, next) ->
             if (sample.measurementQuality == MeasurementQuality.VALID &&
                 next.measurementQuality == MeasurementQuality.VALID &&
-                averageSpeedKmh(sample, next) < averageSpeedThresholdKmh
+                averageSpeedKmh(sample, next)?.let { it < averageSpeedThresholdKmh } == true
             ) {
                 val overlapStart = maxOf(sample.timestamp, windowStart)
                 val overlapEnd = minOf(next.timestamp, now)
@@ -38,7 +38,7 @@ class HighwayModeReminderEvaluator(
         return lowSpeedSeconds >= reminderWindowSeconds
     }
 
-    private fun averageSpeedKmh(first: DrivingSample, second: DrivingSample) =
-        (first.speedMps + second.speedMps) * 3.6 / 2
+    private fun averageSpeedKmh(first: DrivingSample, second: DrivingSample): Double? =
+        if (first.speedMps == null || second.speedMps == null) null else (first.speedMps + second.speedMps) * 3.6 / 2
 
 }

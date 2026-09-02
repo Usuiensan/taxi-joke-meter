@@ -53,6 +53,56 @@ class TripMeasurementAccumulatorTest {
     }
 
     @Test
+    fun prefersMonotonicTimeWhenWallClockMovesBackwards() {
+        val accumulator = TripMeasurementAccumulator(rule)
+
+        val result = accumulator.add(
+            sample(100, longitude = 135.0, speedMps = 1.0, elapsedRealtimeNanos = 1_000_000_000L),
+            sample(90, longitude = 135.001, speedMps = 1.0, elapsedRealtimeNanos = 2_000_000_000L),
+        )
+
+        assertEquals(1L, result.lowSpeedSeconds)
+    }
+
+    @Test
+    fun reportedZeroSpeedIsStoppedButMissingSpeedIsNotStopped() {
+        val stopped = TripMeasurementAccumulator(rule).add(
+            sample(0, speedMps = 0.0, elapsedRealtimeNanos = 0L),
+            sample(1, longitude = 135.001, speedMps = 0.0, elapsedRealtimeNanos = 1_000_000_000L),
+        )
+        val unknown = TripMeasurementAccumulator(rule).add(
+            sample(0, speedMps = null, elapsedRealtimeNanos = 0L),
+            sample(1, longitude = 135.001, speedMps = null, elapsedRealtimeNanos = 1_000_000_000L),
+        )
+
+        assertEquals(1L, stopped.lowSpeedSeconds)
+        assertEquals(0L, unknown.lowSpeedSeconds)
+        assertEquals(91L, unknown.chargeableDistanceMeters)
+    }
+
+    @Test
+    fun derivesAverageSpeedForMissingReportedSpeed() {
+        val result = TripMeasurementAccumulator(rule).add(
+            sample(0, longitude = 135.0, speedMps = null, elapsedRealtimeNanos = 0L),
+            sample(1, longitude = 135.0001, speedMps = null, elapsedRealtimeNanos = 1_000_000_000L),
+        )
+
+        assertEquals(9L, result.chargeableDistanceMeters)
+        assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test
+    fun excludesMissingSpeedWhenAverageCannotBeDerived() {
+        val result = TripMeasurementAccumulator(rule).add(
+            sample(0, longitude = 135.0, speedMps = null),
+            sample(1, longitude = 135.0001, speedMps = null),
+        )
+
+        assertEquals(0L, result.chargeableDistanceMeters)
+        assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test
     fun onlyValidQualityIsChargeable() {
         assertEquals(setOf(MeasurementQuality.VALID, MeasurementQuality.POOR_ACCURACY, MeasurementQuality.STALE, MeasurementQuality.UNAVAILABLE), MeasurementQuality.entries.toSet())
     }
@@ -68,20 +118,23 @@ class TripMeasurementAccumulatorTest {
         second: Long,
         latitude: Double = 35.0,
         longitude: Double = 135.0,
-        speedMps: Double = 10.0,
+        speedMps: Double? = 10.0,
         quality: MeasurementQuality = MeasurementQuality.VALID,
+        elapsedRealtimeNanos: Long? = null,
     ) = DrivingSample(
-        dutySessionId = "duty-1",
-        timestamp = Instant.ofEpochSecond(second),
-        latitude = latitude,
+            dutySessionId = "duty-1",
+            timestamp = Instant.ofEpochSecond(second),
+            elapsedRealtimeNanos = elapsedRealtimeNanos,
+            latitude = latitude,
         longitude = longitude,
-        accuracyMeters = 5.0,
-        speedMps = speedMps,
+            accuracyMeters = 5.0,
+            speedMps = speedMps,
+            speedSource = if (speedMps == null) SpeedSource.UNAVAILABLE else SpeedSource.REPORTED,
         bearingDegrees = null,
         roadMode = RoadMode.GENERAL,
         occupancyState = OccupancyState.OCCUPIED,
         measurementQuality = quality,
     )
 
-    private fun sampleAtNanos(nanos: Long, speedMps: Double = 10.0) = sample(0, speedMps = speedMps).copy(timestamp = Instant.EPOCH.plusNanos(nanos))
+    private fun sampleAtNanos(nanos: Long, speedMps: Double = 10.0) = sample(0, speedMps = speedMps).copy(timestamp = Instant.EPOCH.plusNanos(nanos), elapsedRealtimeNanos = nanos)
 }

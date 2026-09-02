@@ -3,10 +3,17 @@ package jp.usuiensan.taxijokemeter.data.measurement
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.ForeignKey
+import jp.usuiensan.taxijokemeter.data.duty.DutySessionEntity
 
-@Entity(tableName = "driving_samples", indices = [Index(value = ["timestampEpochSecond", "timestampNano"])])
+@Entity(
+    tableName = "driving_samples",
+    foreignKeys = [ForeignKey(entity = DutySessionEntity::class, parentColumns = ["id"], childColumns = ["dutySessionId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("dutySessionId"), Index(value = ["timestampEpochSecond", "timestampNano"])]
+)
 data class DrivingSampleEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val dutySessionId: String,
     val timestampEpochSecond: Long,
     val timestampNano: Int,
     val latitude: Double,

@@ -13,14 +13,17 @@ class DrivingSampleRepository(private val database: DutyDatabase) {
     }
 
     suspend fun findAll(): List<DrivingSample> = database.drivingSampleDao().findAll().map(DrivingSampleEntity::toDomain)
+
+    suspend fun findByDutySessionId(dutySessionId: String): List<DrivingSample> =
+        database.drivingSampleDao().findByDutySessionId(dutySessionId).map(DrivingSampleEntity::toDomain)
 }
 
 private fun DrivingSample.toEntity() = DrivingSampleEntity(
-    0, timestamp.epochSecond, timestamp.nano, latitude, longitude, accuracyMeters, speedMps, bearingDegrees,
+    0, dutySessionId, timestamp.epochSecond, timestamp.nano, latitude, longitude, accuracyMeters, speedMps, bearingDegrees,
     roadMode.name, occupancyState.name, measurementQuality.name,
 )
 
 private fun DrivingSampleEntity.toDomain() = DrivingSample(
-    Instant.ofEpochSecond(timestampEpochSecond, timestampNano.toLong()), latitude, longitude, accuracyMeters, speedMps, bearingDegrees,
+    dutySessionId, Instant.ofEpochSecond(timestampEpochSecond, timestampNano.toLong()), latitude, longitude, accuracyMeters, speedMps, bearingDegrees,
     RoadMode.valueOf(roadMode), OccupancyState.valueOf(occupancyState), MeasurementQuality.valueOf(measurementQuality),
 )

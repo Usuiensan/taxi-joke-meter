@@ -33,14 +33,15 @@ class DrivingSampleRepositoryTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         database = Room.inMemoryDatabaseBuilder(context, DutyDatabase::class.java).build()
         repository = DrivingSampleRepository(database)
+        runBlocking { database.dutyDao().insertSession(DutySessionEntity("duty-1", Instant.EPOCH, null)) }
     }
 
     @After fun tearDown() = database.close()
 
     @Test fun savesAndLoadsValidAndUnavailableSamples() = runBlocking {
         val now = Instant.parse("2026-09-03T00:00:00Z")
-        val valid = DrivingSample(now, 35.0, 139.0, 5.5, 12.0, 90.0, RoadMode.HIGHWAY2, OccupancyState.OCCUPIED, MeasurementQuality.VALID)
-        val unavailable = DrivingSample(now.plusSeconds(1), 0.0, 0.0, 0.0, 0.0, null, RoadMode.GENERAL, OccupancyState.EMPTY, MeasurementQuality.UNAVAILABLE)
+        val valid = DrivingSample("duty-1", now, 35.0, 139.0, 5.5, 12.0, 90.0, RoadMode.HIGHWAY2, OccupancyState.OCCUPIED, MeasurementQuality.VALID)
+        val unavailable = DrivingSample("duty-1", now.plusSeconds(1), 0.0, 0.0, 0.0, 0.0, null, RoadMode.GENERAL, OccupancyState.EMPTY, MeasurementQuality.UNAVAILABLE)
 
         repository.save(valid)
         repository.save(unavailable)
@@ -51,6 +52,7 @@ class DrivingSampleRepositoryTest {
         repository.save(sameInstant)
 
         assertEquals(listOf(valid, sameInstant, sameMillisecond, unavailable), repository.findAll())
+        assertEquals(listOf(valid, sameInstant, sameMillisecond, unavailable), repository.findByDutySessionId("duty-1"))
     }
 
     @Test fun migratesVersion2DatabaseAndRoundTripsDrivingSample() = runBlocking {
@@ -67,7 +69,7 @@ class DrivingSampleRepositoryTest {
         database = DutyDatabase.build(context, databaseName)
         repository = DrivingSampleRepository(database)
         val sample = DrivingSample(
-            now.plusNanos(123), 35.0, 139.0, 5.5, 12.0, 90.0,
+            "legacy-driving-samples", now.plusNanos(123), 35.0, 139.0, 5.5, 12.0, 90.0,
             RoadMode.HIGHWAY2, OccupancyState.OCCUPIED, MeasurementQuality.VALID,
         )
 

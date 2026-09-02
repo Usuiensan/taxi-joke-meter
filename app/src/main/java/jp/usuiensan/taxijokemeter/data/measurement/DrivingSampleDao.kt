@@ -12,4 +12,7 @@ interface DrivingSampleDao {
 
     @Query("SELECT * FROM driving_samples ORDER BY timestampEpochSecond ASC, timestampNano ASC, id ASC")
     suspend fun findAll(): List<DrivingSampleEntity>
+
+    @Query("SELECT * FROM driving_samples WHERE dutySessionId = :dutySessionId ORDER BY timestampEpochSecond ASC, timestampNano ASC, id ASC")
+    suspend fun findByDutySessionId(dutySessionId: String): List<DrivingSampleEntity>
 }

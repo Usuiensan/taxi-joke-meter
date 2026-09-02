@@ -8,14 +8,20 @@ import jp.usuiensan.taxijokemeter.domain.model.FareRule
 class FareMeasurementSession(fareRule: FareRule) {
     private val fareRule = fareRule
     private var accumulator: TripMeasurementAccumulator? = null
+    private var anchor: DrivingSample? = null
     private var result: MeasurementAccumulation? = null
 
     fun begin() {
         accumulator = TripMeasurementAccumulator(fareRule)
+        anchor = null
         result = null
     }
 
-    fun add(previous: DrivingSample, current: DrivingSample): MeasurementAccumulation? {
+    fun add(current: DrivingSample): MeasurementAccumulation? {
+        if (!current.isValid) return null
+        val previous = anchor
+        anchor = current
+        if (previous == null) return null
         val next = accumulator?.add(previous, current) ?: return null
         result = next
         return next
@@ -24,6 +30,7 @@ class FareMeasurementSession(fareRule: FareRule) {
     fun end(): MeasurementAccumulation? {
         val completed = result
         accumulator = null
+        anchor = null
         result = null
         return completed
     }

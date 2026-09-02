@@ -16,24 +16,47 @@ class FareMeasurementSessionTest {
     @Test fun inactiveSessionDoesNotAccumulate() {
         val session = FareMeasurementSession(rule)
 
-        assertEquals(null, session.add(sample(0.0, 0), sample(0.001, 1)))
+        assertEquals(null, session.add(sample(0.001, 1)))
     }
 
-    @Test fun beginStartsAtZeroAndEndReturnsTripResult() {
+    @Test fun firstSampleAfterBeginIsAnchorAndOnlyFollowingSegmentAccumulates() {
         val session = FareMeasurementSession(rule)
         session.begin()
 
-        session.add(sample(0.0, 0), sample(0.001, 1))
+        session.add(sample(0.001, 1))
+        session.add(sample(0.002, 2))
 
         assertEquals(91L, session.end()!!.chargeableDistanceMeters)
-        assertEquals(null, session.add(sample(0.0, 2), sample(0.001, 3)))
+        assertEquals(null, session.add(sample(0.001, 3)))
     }
 
-    private fun sample(longitude: Double, second: Long) = DrivingSample(
+    @Test fun beginResetsAnchorFromPreviousMeasurement() {
+        val session = FareMeasurementSession(rule)
+        session.begin()
+        session.add(sample(0.001, 1))
+        session.end()
+
+        session.begin()
+        session.add(sample(0.003, 3))
+
+        assertEquals(null, session.end())
+    }
+
+    @Test fun invalidSampleDoesNotBecomeFareAnchor() {
+        val session = FareMeasurementSession(rule)
+        session.begin()
+
+        session.add(sample(0.001, 1, MeasurementQuality.STALE))
+        assertEquals(null, session.add(sample(0.002, 2)))
+
+        assertEquals(null, session.end())
+    }
+
+    private fun sample(longitude: Double, second: Long, quality: MeasurementQuality = MeasurementQuality.VALID) = DrivingSample(
         dutySessionId = "duty-1", timestamp = Instant.ofEpochSecond(second), latitude = 35.0,
         longitude = longitude, accuracyMeters = 5.0, speedMps = 10.0, bearingDegrees = null,
         roadMode = RoadMode.GENERAL, occupancyState = OccupancyState.EMPTY,
-        measurementQuality = MeasurementQuality.VALID, elapsedRealtimeNanos = second * 1_000_000_000L,
+        measurementQuality = quality, elapsedRealtimeNanos = second * 1_000_000_000L,
         speedSource = SpeedSource.REPORTED,
     )
 }

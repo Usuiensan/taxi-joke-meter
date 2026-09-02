@@ -7,9 +7,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,39 +30,80 @@ private val MeterRed = Color(0xFFE53B35)
 
 @Composable
 fun MeterScreen(contentPadding: PaddingValues) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Row(
+        modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MeterLabel("合計", MeterBlue, Modifier.weight(1f))
-            MeterLabel("空車", MeterRed, Modifier.weight(1f))
+        Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            MeterButton("合計", MeterBlue, Modifier.fillMaxWidth())
+            Spacer(Modifier.weight(1f))
+            MeterButton("1/3", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), 20.sp)
         }
-        Box(
-            modifier = Modifier.fillMaxWidth().weight(1f).border(2.dp, MeterBlue).background(Color(0xFF06131A)).padding(16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Text("燃料実費", color = MeterRed, fontSize = 20.sp, modifier = Modifier.fillMaxWidth())
-                Text("0", color = MeterWhite, fontSize = 72.sp, fontWeight = FontWeight.Light)
-                Text("円", color = MeterWhite, fontSize = 24.sp)
+
+        Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            BalancePanel(Modifier.weight(1f))
+            MeterRow("運賃料金計", "14,850円")
+            MeterRow("通行料他", "730円")
+            MeterRow("決済合計", "-15,580円")
+            Spacer(Modifier.weight(1f))
+            BottomControls()
+        }
+
+        Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            MeterButton("空車", MeterRed, Modifier.fillMaxWidth())
+            MeterButton("実車", Color(0xFF2C9ED9), Modifier.fillMaxWidth())
+            MeterButton("支払", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023))
+            MeterButton("合計", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023))
+        }
+    }
+}
+
+@Composable
+private fun BalancePanel(modifier: Modifier) {
+    Box(
+        modifier = modifier.fillMaxWidth().border(2.dp, MeterBlue).background(Color(0xFF056B9B)).padding(12.dp),
+        contentAlignment = Alignment.BottomStart,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("残金", color = MeterRed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("0", color = MeterWhite, fontSize = 76.sp, fontWeight = FontWeight.Light)
+                    Text("円", color = MeterWhite, fontSize = 24.sp, modifier = Modifier.padding(bottom = 8.dp))
+                }
             }
-        }
-        MeterRow("走行距離", "0 m")
-        MeterRow("低速時間", "0 秒")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("実車", "支払", "迎車", "高速", "割増").forEach { MeterLabel(it, MeterBlue, Modifier.weight(1f)) }
+            Spacer(Modifier.height(6.dp).fillMaxWidth().background(MeterWhite))
         }
     }
 }
 
-@Composable private fun MeterRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF25343D)).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+@Composable
+private fun MeterRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(Color(0xFF4D5C64)).padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(label, color = MeterWhite, fontSize = 18.sp)
-        Text(value, color = MeterWhite, fontSize = 18.sp)
+        Text(value, color = MeterWhite, fontSize = 32.sp, fontWeight = FontWeight.Bold)
     }
 }
 
-@Composable private fun MeterLabel(text: String, color: Color, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.background(color).padding(vertical = 9.dp), contentAlignment = Alignment.Center) { Text(text, color = MeterWhite, fontWeight = FontWeight.Bold, fontSize = 17.sp) }
+@Composable
+private fun BottomControls() {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        MeterButton("明細", Color(0xFFB6D744), Modifier.weight(1f), Color(0xFF16200C))
+        MeterButton("人員", Color(0xFF1AA4D1), Modifier.weight(1f))
+        MeterButton("経由地", MeterWhite, Modifier.weight(1f), Color(0xFF1C2023))
+        MeterButton("障割", Color(0xFF98A853), Modifier.weight(1f), Color(0xFF1C2023))
+        MeterButton("迎車", Color(0xFF1AA4D1), Modifier.weight(1f))
+        MeterButton("高速", MeterWhite, Modifier.weight(1f), Color(0xFF1C2023))
+    }
+}
+
+@Composable
+private fun MeterButton(text: String, background: Color, modifier: Modifier = Modifier, textColor: Color = MeterWhite, size: androidx.compose.ui.unit.TextUnit = 17.sp) {
+    Box(modifier = modifier.background(background).border(1.dp, Color(0xFF273238)).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+        Text(text, color = textColor, fontWeight = FontWeight.Bold, fontSize = size)
+    }
 }

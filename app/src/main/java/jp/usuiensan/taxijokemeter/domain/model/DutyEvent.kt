@@ -11,6 +11,7 @@ enum class DutyEventType {
     DEADHEAD_END,
     BREAK_START,
     BREAK_END,
+    SAFETY_ROAD_MODE_CHANGE,
 }
 
 data class DutyEvent(
@@ -19,4 +20,5 @@ data class DutyEvent(
     val occurredAt: Instant,
     val place: RecordedPlace?,
     val note: String?,
+    val safetyRoadModeChange: SafetyRoadModeChange? = null,
 )

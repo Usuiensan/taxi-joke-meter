@@ -43,5 +43,7 @@ data class DutyEventEntity(
     val type: String,
     val occurredAt: Instant,
     val latitude: Double?, val longitude: Double?, val accuracyMeters: Double?, val recordedAt: Instant?, val addressText: String?, val locationPrecision: String?, val source: String?,
+    val safetyRoadModeFrom: String?,
+    val safetyRoadModeTo: String?,
     val note: String?,
 )

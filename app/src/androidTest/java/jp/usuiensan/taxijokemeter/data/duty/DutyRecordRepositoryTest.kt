@@ -13,6 +13,8 @@ import jp.usuiensan.taxijokemeter.domain.model.LocationPrecision
 import jp.usuiensan.taxijokemeter.domain.model.LocationSource
 import jp.usuiensan.taxijokemeter.domain.model.PaymentMethod
 import jp.usuiensan.taxijokemeter.domain.model.RecordedPlace
+import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.model.SafetyRoadModeChange
 import jp.usuiensan.taxijokemeter.domain.model.Trip
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -50,5 +52,15 @@ class DutyRecordRepositoryTest {
         repository.save(session)
 
         assertEquals(session, repository.findById("duty-1"))
+    }
+
+    @Test fun appendsModeChangeEventWithNullPlace() = runBlocking {
+        val now = Instant.parse("2026-09-03T00:00:00Z")
+        repository.save(DutySession("duty-2", now, null))
+        val event = DutyEvent("event-mode", DutyEventType.SAFETY_ROAD_MODE_CHANGE, now, null, null, SafetyRoadModeChange(RoadMode.GENERAL, RoadMode.HIGHWAY1))
+
+        repository.appendEvent("duty-2", event)
+
+        assertEquals(event, repository.findById("duty-2")!!.events.single())
     }
 }

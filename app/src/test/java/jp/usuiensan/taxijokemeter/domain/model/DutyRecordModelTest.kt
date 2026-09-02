@@ -8,7 +8,16 @@ class DutyRecordModelTest {
     private val now = Instant.parse("2026-09-03T00:00:00Z")
 
     @Test fun supportsAllDutyEventTypes() {
-        assertEquals(8, DutyEventType.entries.size)
+        assertEquals(9, DutyEventType.entries.size)
+    }
+
+    @Test fun mapsFareAndSafetyModesIndependently() {
+        assertEquals(FareRoadMode.GENERAL, RoadMode.GENERAL.fare)
+        assertEquals(SafetyRoadMode.GENERAL_60, RoadMode.GENERAL.safety)
+        assertEquals(FareRoadMode.HIGHWAY, RoadMode.HIGHWAY1.fare)
+        assertEquals(SafetyRoadMode.URBAN_EXPRESSWAY_80, RoadMode.HIGHWAY1.safety)
+        assertEquals(FareRoadMode.HIGHWAY, RoadMode.HIGHWAY2.fare)
+        assertEquals(SafetyRoadMode.MOTORWAY_100, RoadMode.HIGHWAY2.safety)
     }
 
     @Test fun keepsTripFieldsAndUnresolvedPlace() {

@@ -40,6 +40,8 @@
 Task 1: complete (commits f01ba23..5767d04, review clean)
 Task 2: complete (commit 3e37a95, review clean; P3 unused import and extra mixed multi-add test deferred)
 Task 3: complete (commits 4f5bda0..397de52, review clean; connected instrumentation unavailable)
+Final review fix: evaluator window/common sample (commit bac3d29), Room precision/migration (commit d636274), window-boundary correction (commit d071095)
+Final scoped re-review: clean; prior window-boundary finding addressed, no new Important/Critical findings
 
 ## Task 3 review fix report (2026-09-03)
 

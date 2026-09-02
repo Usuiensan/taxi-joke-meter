@@ -4,6 +4,12 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.Instant
@@ -79,10 +85,68 @@ class DrivingSampleRepositoryTest {
         assertEquals(DutySessionEntity("duty-v2", now, null), database.dutyDao().findSession("duty-v2"))
         assertEquals(listOf(sample), repository.findAll())
     }
+
+    @Test fun migrationV5KeepsReportedSpeed() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val databaseName = "driving-sample-v5-speed-test.db"
+        context.deleteDatabase(databaseName)
+        val now = Instant.parse("2026-09-03T00:00:00Z")
+        Room.databaseBuilder(context, V5DutyDatabase::class.java, databaseName).build().also { v5Database ->
+            v5Database.dutyDao().insertSession(DutySessionEntity("duty-v5", now, null))
+            v5Database.sampleDao().insert(V5DrivingSampleEntity(
+                dutySessionId = "duty-v5", timestampEpochSecond = now.epochSecond, timestampNano = now.nano,
+                latitude = 35.0, longitude = 139.0, accuracyMeters = 5.0, speedMps = 12.5,
+                bearingDegrees = null, roadMode = RoadMode.GENERAL.name, occupancyState = OccupancyState.EMPTY.name,
+                measurementQuality = MeasurementQuality.VALID.name,
+            ))
+            v5Database.close()
+        }
+
+        database = DutyDatabase.build(context, databaseName)
+        repository = DrivingSampleRepository(database)
+
+        val migrated = repository.findByDutySessionId("duty-v5")
+
+        assertEquals(12.5, migrated.single().speedMps!!, 0.0)
+        assertEquals(SpeedSource.REPORTED, migrated.single().speedSource)
+        assertEquals(null, migrated.single().elapsedRealtimeNanos)
+    }
 }
 
 @Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class], version = 2, exportSchema = false)
 @androidx.room.TypeConverters(DutyConverters::class)
 abstract class V2DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao
+}
+
+@Entity(
+    tableName = "driving_samples",
+    foreignKeys = [ForeignKey(entity = DutySessionEntity::class, parentColumns = ["id"], childColumns = ["dutySessionId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("dutySessionId"), Index(value = ["timestampEpochSecond", "timestampNano"])],
+)
+data class V5DrivingSampleEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val dutySessionId: String,
+    val timestampEpochSecond: Long,
+    val timestampNano: Int,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Double,
+    val speedMps: Double,
+    val bearingDegrees: Double?,
+    val roadMode: String,
+    val occupancyState: String,
+    val measurementQuality: String,
+)
+
+@Dao
+interface V5DrivingSampleDao {
+    @Insert suspend fun insert(sample: V5DrivingSampleEntity)
+}
+
+@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class, V5DrivingSampleEntity::class], version = 5, exportSchema = false)
+@androidx.room.TypeConverters(DutyConverters::class)
+abstract class V5DutyDatabase : RoomDatabase() {
+    abstract fun dutyDao(): DutyDao
+    abstract fun sampleDao(): V5DrivingSampleDao
 }

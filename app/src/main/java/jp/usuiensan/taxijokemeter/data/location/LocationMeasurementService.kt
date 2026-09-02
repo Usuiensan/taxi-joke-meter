@@ -32,6 +32,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
 class LocationMeasurementService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -42,6 +43,7 @@ class LocationMeasurementService : Service() {
     private lateinit var fareRule: FareRule
     private lateinit var fareMeasurement: FareMeasurementSession
     private var runtimeState = MeasurementRuntimeState(DrivingSampleState("", RoadMode.GENERAL, OccupancyState.EMPTY))
+    private val savedSampleCount = AtomicInteger()
     private val healthTracker = LocationHealthTracker()
     private val healthHandler = Handler(Looper.getMainLooper())
     private var lastLoggedHealth: LocationHealth? = null
@@ -50,12 +52,14 @@ class LocationMeasurementService : Service() {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
-            val accumulation = runtimeState.previousSample?.let { fareMeasurement.add(it, sample) }
+            val accumulation = fareMeasurement.add(sample)
             runtimeState = runtimeState.copy(previousSample = sample)
+            MeasurementDebugStore.update { it.copy(health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()), latestAccuracyMeters = sample.accuracyMeters, latestSpeedMps = sample.speedMps, roadMode = sample.roadMode.name) }
             scope.launch {
                 repository.save(sample)
-                runtimeState = runtimeState.copy(savedSampleCount = runtimeState.savedSampleCount + 1)
-                Log.i(TAG, "GPS状態=${healthTracker.healthAt(SystemClock.elapsedRealtimeNanos())} 測位品質=${sample.measurementQuality} 速度=${sample.speedMps ?: "不明"}m/s accuracy=${sample.accuracyMeters}m RoadMode=${sample.roadMode} 累積課金距離=${accumulation?.chargeableDistanceMeters ?: 0}m 累積低速時間=${accumulation?.lowSpeedSeconds ?: 0}秒 保存件数=${runtimeState.savedSampleCount}")
+                val count = savedSampleCount.incrementAndGet()
+                healthHandler.post { MeasurementDebugStore.update { it.copy(savedSampleCount = count) } }
+                Log.i(TAG, "GPS状態=${healthTracker.healthAt(SystemClock.elapsedRealtimeNanos())} 測位品質=${sample.measurementQuality} 速度=${sample.speedMps ?: "不明"}m/s accuracy=${sample.accuracyMeters}m RoadMode=${sample.roadMode} 累積課金距離=${accumulation?.chargeableDistanceMeters ?: 0}m 累積低速時間=${accumulation?.lowSpeedSeconds ?: 0}秒 保存件数=$count")
             }
         }
 
@@ -88,6 +92,8 @@ class LocationMeasurementService : Service() {
                 intent.getIntExtra(EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS, 0),
             )
             fareMeasurement = FareMeasurementSession(fareRule)
+            savedSampleCount.set(0)
+            MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, roadMode = runtimeState.sampleState.roadMode.name))
             startForegroundCompat()
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "GPS状態=権限なし")
@@ -102,6 +108,7 @@ class LocationMeasurementService : Service() {
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: runtimeState.sampleState.roadMode.name),
                 OccupancyState.valueOf(intent.getStringExtra(EXTRA_OCCUPANCY_STATE) ?: runtimeState.sampleState.occupancyState.name),
             )
+            MeasurementDebugStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode.name) }
         } else if (intent?.action == ACTION_BEGIN_FARE) {
             fareMeasurement.begin()
             Log.i(TAG, "料金計測=開始")
@@ -116,6 +123,7 @@ class LocationMeasurementService : Service() {
         healthHandler.removeCallbacks(healthWatchdog)
         scope.cancel()
         database.close()
+        MeasurementDebugStore.update { it.copy(running = false) }
         super.onDestroy()
     }
 
@@ -146,6 +154,7 @@ class LocationMeasurementService : Service() {
                 Log.i(TAG, "GPS状態=$health")
                 lastLoggedHealth = health
             }
+            MeasurementDebugStore.update { it.copy(health = health) }
             healthHandler.postDelayed(this, 1_000L)
         }
     }

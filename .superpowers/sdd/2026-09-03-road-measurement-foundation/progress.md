@@ -20,6 +20,12 @@
 - 判定対象を `[now - reminderWindowSeconds, now]` 内の実サンプル区間に限定し、窓外サンプルの延長計上を削除。
 - 窓外サンプル、UNAVAILABLE サンプル、公開 `DrivingSample` 入力の focused tests を追加・更新。
 - focused unit tests: PASS（13 tests）。`git diff --check`: PASS。
+
+## Task 1 evaluator window-boundary fix report (2026-09-03)
+
+- 元の `DrivingSample` 列を timestamp 順にペアリングしてから、各 valid 区間と判定窓の重複時間だけを計上するよう修正。
+- 窓開始を跨ぐ valid 区間の回帰テストを追加。最終サンプルからの外挿は行わない。
+- focused unit tests: PASS（14 tests）。`git diff --check`: PASS。
 ## Preflight scan
 
 | Scope | Relationship | Finding | Ruling |
@@ -39,5 +45,14 @@ Task 3: complete (commits 4f5bda0..397de52, review clean; connected instrumentat
 
 - `DrivingSample` の timestamp を epoch second + nano の複合主キーで保存し、同一ミリ秒内の distinct samples と完全な `Instant` 精度を保持。
 - `DutyDatabase.build` に 1→2 / 2→3 migration を登録し、version 2 DB からの migration と保存・復元テストを追加。
+- `testDebugUnitTest`、`assembleDebug`、`assembleDebugAndroidTest`: PASS。
+- `connectedDebugAndroidTest`: 未実行（connected device なし）。
+
+## Task 3 final review fix report (2026-09-03)
+
+- 同一 `Instant` のサンプルも失わないよう auto-generated `id` を主キーに追加し、timestamp second/nano 複合 index と `id` 順で取得。
+- DB version を 4 に更新し、v2→v3→v4 migration chain を `DutyDatabase.build` に登録。v3 の旧複合キー table は v4 table へ移行。
+- v2 DB を実際に open して duty data を保存・読込後、current DB で既存 duty data と sample round-trip を検証するテストを追加。
+- 同一 Instant duplicate sample 回帰テストを追加。
 - `testDebugUnitTest`、`assembleDebug`、`assembleDebugAndroidTest`: PASS。
 - `connectedDebugAndroidTest`: 未実行（connected device なし）。

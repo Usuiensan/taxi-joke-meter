@@ -3,6 +3,7 @@ package jp.usuiensan.taxijokemeter.domain.road
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import java.time.Duration
 import java.time.Instant
 
 class HighwayModeReminderEvaluator(
@@ -23,13 +24,14 @@ class HighwayModeReminderEvaluator(
         if (currentMode == RoadMode.GENERAL || lastNotifiedAt != null) return false
 
         val windowStart = now.minusSeconds(reminderWindowSeconds)
-        val windowSamples = samples.filter { it.timestamp in windowStart..now }
-        val lowSpeedSeconds = windowSamples.zipWithNext().sumOf { (sample, next) ->
+        val lowSpeedSeconds = samples.sortedBy { it.timestamp }.zipWithNext().sumOf { (sample, next) ->
             if (sample.measurementQuality == MeasurementQuality.VALID &&
                 next.measurementQuality == MeasurementQuality.VALID &&
                 averageSpeedKmh(sample, next) < averageSpeedThresholdKmh
             ) {
-                (next.timestamp.epochSecond - sample.timestamp.epochSecond).coerceAtLeast(0)
+                val overlapStart = maxOf(sample.timestamp, windowStart)
+                val overlapEnd = minOf(next.timestamp, now)
+                Duration.between(overlapStart, overlapEnd).seconds.coerceAtLeast(0)
             } else 0
         }
 

@@ -80,6 +80,19 @@ class HighwayModeReminderEvaluatorTest {
         assertFalse(evaluator.evaluate(RoadMode.HIGHWAY1, samples(10.0), null, start.plusSeconds(120)))
     }
 
+    @Test fun countsValidIntervalThatCrossesWindowStart() {
+        val configured = HighwayModeReminderEvaluator(reminderWindowSeconds = 60)
+
+        assertTrue(
+            configured.evaluate(
+                RoadMode.HIGHWAY1,
+                listOf(sample(0, 10.0), sample(120, 10.0)),
+                null,
+                start.plusSeconds(120),
+            ),
+        )
+    }
+
     @Test fun staleLastSampleIsNotExtrapolatedToNow() {
         assertFalse(evaluator.evaluate(RoadMode.HIGHWAY1, listOf(sample(0, 10.0)), null, start.plusSeconds(60)))
     }

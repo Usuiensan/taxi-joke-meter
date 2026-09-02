@@ -9,7 +9,17 @@ data class HighwayModeSample(
     val isValid: Boolean = true,
 )
 
-class HighwayModeReminderEvaluator {
+class HighwayModeReminderEvaluator(
+    private val reminderWindowSeconds: Long = 60,
+    private val averageSpeedThresholdKmh: Double = 40.0,
+    private val notificationCooldownSeconds: Long = Long.MAX_VALUE,
+) {
+    init {
+        require(reminderWindowSeconds > 0)
+        require(averageSpeedThresholdKmh >= 0)
+        require(notificationCooldownSeconds >= 0)
+    }
+
     fun evaluate(
         currentMode: RoadMode,
         samples: List<HighwayModeSample>,
@@ -18,23 +28,24 @@ class HighwayModeReminderEvaluator {
     ): Boolean {
         if (currentMode == RoadMode.GENERAL || lastNotifiedAt != null) return false
 
-        val validSamples = samples.filter { it.isValid }.sortedBy { it.timestamp }
-        val lowSpeedSeconds = validSamples.zipWithNext().sumOf { (sample, next) ->
-            if (sample.speedMps < currentMode.safety.limitKmh / 3.6) {
+        val lowSpeedSeconds = samples.zipWithNext().sumOf { (sample, next) ->
+            if (sample.isValid && next.isValid && averageSpeedKmh(sample, next) < averageSpeedThresholdKmh) {
                 (next.timestamp.epochSecond - sample.timestamp.epochSecond).coerceAtLeast(0)
             } else 0
-        } + validSamples.lastOrNull()?.let { sample ->
-            if (sample.speedMps < currentMode.safety.limitKmh / 3.6) {
+        } + samples.lastOrNull()?.let { sample ->
+            if (sample.isValid && sample.speedMps * 3.6 < averageSpeedThresholdKmh) {
                 (now.epochSecond - sample.timestamp.epochSecond).coerceAtLeast(0)
             } else 0
         }.orZero()
 
-        return lowSpeedSeconds >= REMINDER_AFTER_SECONDS
+        return lowSpeedSeconds >= reminderWindowSeconds
     }
+
+    private fun averageSpeedKmh(first: HighwayModeSample, second: HighwayModeSample) =
+        (first.speedMps + second.speedMps) * 3.6 / 2
 
     private fun Long?.orZero() = this ?: 0L
 
     private companion object {
-        const val REMINDER_AFTER_SECONDS = 60L
     }
 }

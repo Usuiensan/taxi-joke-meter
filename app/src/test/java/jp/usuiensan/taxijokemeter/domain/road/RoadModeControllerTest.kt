@@ -32,4 +32,23 @@ class RoadModeControllerTest {
             controller.transition(RoadMode.GENERAL, RoadModeAction.SHORT_PRESS).safetyRoadModeChange,
         )
     }
+
+    @Test fun everyModeChangeCarriesItsExactPayload() {
+        assertEquals(
+            SafetyRoadModeChange(RoadMode.HIGHWAY1, RoadMode.HIGHWAY2),
+            controller.transition(RoadMode.HIGHWAY1, RoadModeAction.SHORT_PRESS).safetyRoadModeChange,
+        )
+        assertEquals(
+            SafetyRoadModeChange(RoadMode.HIGHWAY2, RoadMode.HIGHWAY1),
+            controller.transition(RoadMode.HIGHWAY2, RoadModeAction.SHORT_PRESS).safetyRoadModeChange,
+        )
+        assertEquals(
+            SafetyRoadModeChange(RoadMode.HIGHWAY1, RoadMode.GENERAL),
+            controller.transition(RoadMode.HIGHWAY1, RoadModeAction.LONG_PRESS).safetyRoadModeChange,
+        )
+        assertEquals(
+            SafetyRoadModeChange(RoadMode.HIGHWAY2, RoadMode.GENERAL),
+            controller.transition(RoadMode.HIGHWAY2, RoadModeAction.LONG_PRESS).safetyRoadModeChange,
+        )
+    }
 }

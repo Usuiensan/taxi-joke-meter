@@ -47,8 +47,10 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
     val context = LocalContext.current
     val snapshot by MeasurementDebugStore.snapshot.collectAsState()
     val controller = remember { DutyMeasurementController(context) }
-    val permissionGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
-    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    var permissionGranted by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+    }
+    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> permissionGranted = granted }
     val fareRule = remember { FuelCostFareFactory.create(EnergyCostProfile(FuelType.REGULAR, Powertrain.ICE, 180.0, EnergyEfficiency.KmPerLiter(15.0)), 1_000, 200, 10) }
 
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -65,7 +67,7 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
         Text("保存sample件数: ${snapshot.savedSampleCount}")
         Text("RoadMode: ${snapshot.roadMode}")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RoadMode.entries.forEach { mode -> Button(onClick = { controller.updateState(mode, OccupancyState.EMPTY) }) { Text(mode.name) } }
+            RoadMode.entries.forEach { mode -> Button(enabled = snapshot.running, onClick = { controller.updateState(mode, OccupancyState.EMPTY) }) { Text(mode.name) } }
         }
         Button(onClick = showMeter) { Text("メーター表示") }
     }

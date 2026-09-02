@@ -18,7 +18,10 @@ class FareMeasurementSession(fareRule: FareRule) {
     }
 
     fun add(current: DrivingSample): MeasurementAccumulation? {
-        if (!current.isValid) return null
+        if (!current.isValid) {
+            anchor = null
+            return null
+        }
         val previous = anchor
         anchor = current
         if (previous == null) return null

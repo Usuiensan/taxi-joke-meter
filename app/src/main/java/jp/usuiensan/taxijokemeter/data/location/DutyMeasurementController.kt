@@ -45,6 +45,7 @@ class DutyMeasurementController(private val context: Context) {
     }
 
     fun updateState(roadMode: RoadMode, occupancyState: OccupancyState) {
+        if (!MeasurementDebugStore.snapshot.value.running) return
         context.startService(Intent(context, LocationMeasurementService::class.java).apply {
             action = LocationMeasurementService.ACTION_UPDATE_STATE
             putExtra(LocationMeasurementService.EXTRA_ROAD_MODE, roadMode.name)

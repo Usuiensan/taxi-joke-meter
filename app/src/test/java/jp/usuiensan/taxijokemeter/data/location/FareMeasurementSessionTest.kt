@@ -52,6 +52,19 @@ class FareMeasurementSessionTest {
         assertEquals(null, session.end())
     }
 
+    @Test fun everyNonValidQualityDisconnectsThePreviousAnchor() {
+        MeasurementQuality.entries.filter { it != MeasurementQuality.VALID }.forEach { quality ->
+            val session = FareMeasurementSession(rule)
+            session.begin()
+            session.add(sample(0.001, 1))
+            session.add(sample(0.0015, 2, quality))
+            session.add(sample(0.002, 3))
+            session.add(sample(0.003, 4))
+
+            assertEquals(91L, session.end()!!.chargeableDistanceMeters)
+        }
+    }
+
     private fun sample(longitude: Double, second: Long, quality: MeasurementQuality = MeasurementQuality.VALID) = DrivingSample(
         dutySessionId = "duty-1", timestamp = Instant.ofEpochSecond(second), latitude = 35.0,
         longitude = longitude, accuracyMeters = 5.0, speedMps = 10.0, bearingDegrees = null,

@@ -104,6 +104,7 @@ class LocationMeasurementService : Service() {
             healthHandler.post(healthWatchdog)
             Log.i(TAG, "GPS状態=計測開始 sessionId=${runtimeState.sampleState.dutySessionId}")
         } else if (intent?.action == ACTION_UPDATE_STATE) {
+            if (!MeasurementDebugStore.snapshot.value.running) return START_NOT_STICKY
             runtimeState = runtimeState.updateState(
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: runtimeState.sampleState.roadMode.name),
                 OccupancyState.valueOf(intent.getStringExtra(EXTRA_OCCUPANCY_STATE) ?: runtimeState.sampleState.occupancyState.name),

@@ -51,7 +51,6 @@ class HighwayModeReminderEvaluatorTest {
         val configured = HighwayModeReminderEvaluator(
             reminderWindowSeconds = 120,
             averageSpeedThresholdKmh = 20.0,
-            notificationCooldownSeconds = 300,
         )
         val samples = listOf(HighwayModeSample(start, 5.0))
 

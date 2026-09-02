@@ -12,12 +12,10 @@ data class HighwayModeSample(
 class HighwayModeReminderEvaluator(
     private val reminderWindowSeconds: Long = 60,
     private val averageSpeedThresholdKmh: Double = 40.0,
-    private val notificationCooldownSeconds: Long = Long.MAX_VALUE,
 ) {
     init {
         require(reminderWindowSeconds > 0)
         require(averageSpeedThresholdKmh >= 0)
-        require(notificationCooldownSeconds >= 0)
     }
 
     fun evaluate(

@@ -7,6 +7,12 @@
 - 通知窓、平均速度閾値、クールダウン値を `HighwayModeReminderEvaluator` のコンストラクタで設定可能にした。既存通知ありは one-time 契約どおり常に `false`。
 - 無効 GPS gap 回帰テスト、設定値の境界テスト、全モード変更 payload テストを追加。
 - focused unit tests: PASS（11 tests）。`git diff --check`: PASS。
+
+## Task 1 scoped re-review fix report (2026-09-03)
+
+- one-time 通知契約で使用されていなかった `notificationCooldownSeconds` の引数・検証・テスト指定を削除。
+- `reminderWindowSeconds` と `averageSpeedThresholdKmh` の設定可能性は維持。
+- focused unit tests: PASS。`git diff --check`: PASS。
 ## Preflight scan
 
 | Scope | Relationship | Finding | Ruling |

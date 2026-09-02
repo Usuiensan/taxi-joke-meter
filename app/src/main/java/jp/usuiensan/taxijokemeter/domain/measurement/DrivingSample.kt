@@ -5,9 +5,10 @@ import java.time.Instant
 
 enum class OccupancyState { EMPTY, OCCUPIED }
 
-enum class MeasurementQuality { VALID, UNAVAILABLE }
+enum class MeasurementQuality { VALID, POOR_ACCURACY, STALE, UNAVAILABLE }
 
 data class DrivingSample(
+    val dutySessionId: String,
     val timestamp: Instant,
     val latitude: Double,
     val longitude: Double,

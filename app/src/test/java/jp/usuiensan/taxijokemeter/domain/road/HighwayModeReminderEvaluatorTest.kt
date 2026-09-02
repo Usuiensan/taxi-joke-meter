@@ -107,6 +107,7 @@ class HighwayModeReminderEvaluatorTest {
         speedMps: Double,
         quality: MeasurementQuality = MeasurementQuality.VALID,
     ) = DrivingSample(
+        dutySessionId = "duty-1",
         timestamp = start.plusSeconds(second),
         latitude = 35.0,
         longitude = 135.0,

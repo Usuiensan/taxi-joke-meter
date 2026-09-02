@@ -41,6 +41,23 @@ class TripMeasurementAccumulatorTest {
     }
 
     @Test
+    fun preservesSubSecondLowSpeedIntervalsUntilFinalConversion() {
+        val accumulator = TripMeasurementAccumulator(rule)
+
+        var result = MeasurementAccumulation(0, 0)
+        repeat(4) { index ->
+            result = accumulator.add(sampleAtNanos(index * 500_000_000L, speedMps = 1.0), sampleAtNanos((index + 1) * 500_000_000L, speedMps = 1.0))
+        }
+
+        assertEquals(2L, result.lowSpeedSeconds)
+    }
+
+    @Test
+    fun onlyValidQualityIsChargeable() {
+        assertEquals(setOf(MeasurementQuality.VALID, MeasurementQuality.POOR_ACCURACY, MeasurementQuality.STALE, MeasurementQuality.UNAVAILABLE), MeasurementQuality.entries.toSet())
+    }
+
+    @Test
     fun exposesSafetyLimitsForEachRoadMode() {
         assertEquals(60, RoadMode.GENERAL.safetyLimitKmh)
         assertEquals(80, RoadMode.HIGHWAY1.safetyLimitKmh)
@@ -54,6 +71,7 @@ class TripMeasurementAccumulatorTest {
         speedMps: Double = 10.0,
         quality: MeasurementQuality = MeasurementQuality.VALID,
     ) = DrivingSample(
+        dutySessionId = "duty-1",
         timestamp = Instant.ofEpochSecond(second),
         latitude = latitude,
         longitude = longitude,
@@ -64,4 +82,6 @@ class TripMeasurementAccumulatorTest {
         occupancyState = OccupancyState.OCCUPIED,
         measurementQuality = quality,
     )
+
+    private fun sampleAtNanos(nanos: Long, speedMps: Double = 10.0) = sample(0, speedMps = speedMps).copy(timestamp = Instant.EPOCH.plusNanos(nanos))
 }

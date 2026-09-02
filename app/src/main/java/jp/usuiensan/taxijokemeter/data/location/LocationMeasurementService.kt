@@ -13,6 +13,8 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.IBinder
 import android.os.Looper
+import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import jp.usuiensan.taxijokemeter.MainActivity
@@ -21,7 +23,6 @@ import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
-import jp.usuiensan.taxijokemeter.domain.measurement.TripMeasurementAccumulator
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import kotlinx.coroutines.CoroutineScope
@@ -37,21 +38,24 @@ class LocationMeasurementService : Service() {
     private lateinit var locationManager: LocationManager
     private lateinit var database: DutyDatabase
     private lateinit var repository: DrivingSampleRepository
-    private lateinit var accumulator: TripMeasurementAccumulator
     private lateinit var mapper: LocationSampleMapper
-    private var sampleState = DrivingSampleState("", RoadMode.GENERAL, OccupancyState.EMPTY)
-    private var previous: DrivingSample? = null
-    private var savedCount = 0
+    private lateinit var fareRule: FareRule
+    private lateinit var fareMeasurement: FareMeasurementSession
+    private var runtimeState = MeasurementRuntimeState(DrivingSampleState("", RoadMode.GENERAL, OccupancyState.EMPTY))
+    private val healthTracker = LocationHealthTracker()
+    private val healthHandler = Handler(Looper.getMainLooper())
+    private var lastLoggedHealth: LocationHealth? = null
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            val sample = mapper.map(location, sampleState, Instant.now())
-            val accumulation = previous?.let { accumulator.add(it, sample) }
-            previous = sample
+            location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
+            val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
+            val accumulation = runtimeState.previousSample?.let { fareMeasurement.add(it, sample) }
+            runtimeState = runtimeState.copy(previousSample = sample)
             scope.launch {
                 repository.save(sample)
-                savedCount += 1
-                Log.i(TAG, "GPS状態=${sample.measurementQuality} 速度=${sample.speedMps ?: "不明"}m/s accuracy=${sample.accuracyMeters}m RoadMode=${sample.roadMode} 累積課金距離=${accumulation?.chargeableDistanceMeters ?: 0}m 累積低速時間=${accumulation?.lowSpeedSeconds ?: 0}秒 保存件数=$savedCount")
+                runtimeState = runtimeState.copy(savedSampleCount = runtimeState.savedSampleCount + 1)
+                Log.i(TAG, "GPS状態=${healthTracker.healthAt(SystemClock.elapsedRealtimeNanos())} 測位品質=${sample.measurementQuality} 速度=${sample.speedMps ?: "不明"}m/s accuracy=${sample.accuracyMeters}m RoadMode=${sample.roadMode} 累積課金距離=${accumulation?.chargeableDistanceMeters ?: 0}m 累積低速時間=${accumulation?.lowSpeedSeconds ?: 0}秒 保存件数=${runtimeState.savedSampleCount}")
             }
         }
 
@@ -65,19 +69,25 @@ class LocationMeasurementService : Service() {
         database = DutyDatabase.build(this)
         repository = DrivingSampleRepository(database)
         mapper = LocationSampleMapper(MeasurementQualityPolicy(20.0, Duration.ofSeconds(5)))
-        accumulator = TripMeasurementAccumulator(FareRule(1_000, 500, 200, 100, 10, 75))
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_START) {
-            previous = null
-            savedCount = 0
-            sampleState = DrivingSampleState(
+            runtimeState = MeasurementRuntimeState(DrivingSampleState(
                 intent.getStringExtra(EXTRA_SESSION_ID) ?: return START_NOT_STICKY,
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: RoadMode.GENERAL.name),
                 OccupancyState.valueOf(intent.getStringExtra(EXTRA_OCCUPANCY_STATE) ?: OccupancyState.EMPTY.name),
+            ))
+            fareRule = FareRule(
+                intent.getLongExtra(EXTRA_INITIAL_DISTANCE_METERS, 0L),
+                intent.getLongExtra(EXTRA_INITIAL_FARE_YEN, 0L),
+                intent.getLongExtra(EXTRA_DISTANCE_INCREMENT_METERS, 0L),
+                intent.getLongExtra(EXTRA_DISTANCE_INCREMENT_FARE_YEN, 0L),
+                intent.getIntExtra(EXTRA_LOW_SPEED_LIMIT_KMH, 0),
+                intent.getIntExtra(EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS, 0),
             )
+            fareMeasurement = FareMeasurementSession(fareRule)
             startForegroundCompat()
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "GPS状態=権限なし")
@@ -85,13 +95,25 @@ class LocationMeasurementService : Service() {
                 return START_NOT_STICKY
             }
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, listener, Looper.getMainLooper())
-            Log.i(TAG, "GPS状態=計測開始 sessionId=${sampleState.dutySessionId}")
+            healthHandler.post(healthWatchdog)
+            Log.i(TAG, "GPS状態=計測開始 sessionId=${runtimeState.sampleState.dutySessionId}")
+        } else if (intent?.action == ACTION_UPDATE_STATE) {
+            runtimeState = runtimeState.updateState(
+                RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: runtimeState.sampleState.roadMode.name),
+                OccupancyState.valueOf(intent.getStringExtra(EXTRA_OCCUPANCY_STATE) ?: runtimeState.sampleState.occupancyState.name),
+            )
+        } else if (intent?.action == ACTION_BEGIN_FARE) {
+            fareMeasurement.begin()
+            Log.i(TAG, "料金計測=開始")
+        } else if (intent?.action == ACTION_END_FARE) {
+            Log.i(TAG, "料金計測=終了 結果=${fareMeasurement.end() ?: "未開始"}")
         }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         locationManager.removeUpdates(listener)
+        healthHandler.removeCallbacks(healthWatchdog)
         scope.cancel()
         database.close()
         super.onDestroy()
@@ -117,11 +139,31 @@ class LocationMeasurementService : Service() {
         )
     }
 
+    private val healthWatchdog = object : Runnable {
+        override fun run() {
+            val health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos())
+            if (health != lastLoggedHealth) {
+                Log.i(TAG, "GPS状態=$health")
+                lastLoggedHealth = health
+            }
+            healthHandler.postDelayed(this, 1_000L)
+        }
+    }
+
     companion object {
         const val ACTION_START = "jp.usuiensan.taxijokemeter.action.START_MEASUREMENT"
+        const val ACTION_UPDATE_STATE = "jp.usuiensan.taxijokemeter.action.UPDATE_MEASUREMENT_STATE"
+        const val ACTION_BEGIN_FARE = "jp.usuiensan.taxijokemeter.action.BEGIN_FARE_MEASUREMENT"
+        const val ACTION_END_FARE = "jp.usuiensan.taxijokemeter.action.END_FARE_MEASUREMENT"
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_ROAD_MODE = "road_mode"
         const val EXTRA_OCCUPANCY_STATE = "occupancy_state"
+        const val EXTRA_INITIAL_DISTANCE_METERS = "initial_distance_meters"
+        const val EXTRA_INITIAL_FARE_YEN = "initial_fare_yen"
+        const val EXTRA_DISTANCE_INCREMENT_METERS = "distance_increment_meters"
+        const val EXTRA_DISTANCE_INCREMENT_FARE_YEN = "distance_increment_fare_yen"
+        const val EXTRA_LOW_SPEED_LIMIT_KMH = "low_speed_limit_kmh"
+        const val EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS = "low_speed_time_increment_seconds"
         private const val CHANNEL_ID = "duty_measurement"
         private const val NOTIFICATION_ID = 1001
         private const val TAG = "LocationMeasurement"

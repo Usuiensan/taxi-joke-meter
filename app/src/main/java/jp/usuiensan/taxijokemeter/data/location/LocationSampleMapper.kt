@@ -5,6 +5,7 @@ import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.measurement.SpeedSource
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import java.time.Instant
 
@@ -17,7 +18,12 @@ data class DrivingSampleState(
 class LocationSampleMapper(private val qualityPolicy: MeasurementQualityPolicy) {
     fun map(location: Location?, state: DrivingSampleState, now: Instant): DrivingSample {
         if (location == null) {
-            return DrivingSample(state.dutySessionId, now, 0.0, 0.0, 0.0, 0.0, null, state.roadMode, state.occupancyState, MeasurementQuality.UNAVAILABLE)
+            return DrivingSample(
+                dutySessionId = state.dutySessionId, timestamp = now, latitude = 0.0, longitude = 0.0,
+                accuracyMeters = 0.0, speedMps = null, bearingDegrees = null, roadMode = state.roadMode,
+                occupancyState = state.occupancyState, measurementQuality = MeasurementQuality.UNAVAILABLE,
+                speedSource = SpeedSource.UNAVAILABLE,
+            )
         }
 
         val timestamp = Instant.ofEpochMilli(location.time)
@@ -26,12 +32,20 @@ class LocationSampleMapper(private val qualityPolicy: MeasurementQualityPolicy) 
             !location.hasAccuracy() || location.accuracy.toDouble() > qualityPolicy.accuracyThresholdMeters -> MeasurementQuality.POOR_ACCURACY
             else -> MeasurementQuality.VALID
         }
+        val hasReportedSpeed = location.hasSpeed()
         return DrivingSample(
-            state.dutySessionId, timestamp, location.latitude, location.longitude,
-            if (location.hasAccuracy()) location.accuracy.toDouble() else Double.POSITIVE_INFINITY,
-            if (location.hasSpeed()) location.speed.toDouble() else 0.0,
-            if (location.hasBearing()) location.bearing.toDouble() else null,
-            state.roadMode, state.occupancyState, quality,
+            dutySessionId = state.dutySessionId,
+            timestamp = timestamp,
+            elapsedRealtimeNanos = location.elapsedRealtimeNanos.takeIf { it > 0L },
+            latitude = location.latitude,
+            longitude = location.longitude,
+            accuracyMeters = if (location.hasAccuracy()) location.accuracy.toDouble() else Double.POSITIVE_INFINITY,
+            speedMps = location.speed.toDouble().takeIf { hasReportedSpeed },
+            speedSource = if (hasReportedSpeed) SpeedSource.REPORTED else SpeedSource.UNAVAILABLE,
+            bearingDegrees = location.bearing.toDouble().takeIf { location.hasBearing() },
+            roadMode = state.roadMode,
+            occupancyState = state.occupancyState,
+            measurementQuality = quality,
         )
     }
 }

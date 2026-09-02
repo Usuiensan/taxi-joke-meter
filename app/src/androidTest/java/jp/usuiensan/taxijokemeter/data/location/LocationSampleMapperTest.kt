@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.measurement.SpeedSource
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -26,14 +27,32 @@ class LocationSampleMapperTest {
             accuracy = 5.0f
             speed = 3.5f
             bearing = 90.0f
+            elapsedRealtimeNanos = 12_345_678_900L
         }
 
         val sample = mapper.map(location, state, now)
 
         assertEquals("duty-1", sample.dutySessionId)
         assertEquals(MeasurementQuality.VALID, sample.measurementQuality)
-        assertEquals(3.5, sample.speedMps, 0.0)
+        assertEquals(3.5, sample.speedMps!!, 0.0)
+        assertEquals(SpeedSource.REPORTED, sample.speedSource)
+        assertEquals(12_345_678_900L, sample.elapsedRealtimeNanos)
         assertEquals(90.0, sample.bearingDegrees!!, 0.0)
+    }
+
+    @Test fun keepsMissingSpeedAsUnknown() {
+        val location = Location("gps").apply {
+            time = now.toEpochMilli()
+            latitude = 35.0
+            longitude = 139.0
+            accuracy = 5.0f
+            elapsedRealtimeNanos = 1_000_000L
+        }
+
+        val sample = mapper.map(location, state, now)
+
+        assertEquals(null, sample.speedMps)
+        assertEquals(SpeedSource.UNAVAILABLE, sample.speedSource)
     }
 
     @Test fun classifiesUnavailableStaleAndPoorAccuracy() {

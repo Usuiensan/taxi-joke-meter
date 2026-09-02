@@ -16,6 +16,7 @@ import jp.usuiensan.taxijokemeter.data.duty.TripEntity
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.measurement.SpeedSource
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -40,8 +41,8 @@ class DrivingSampleRepositoryTest {
 
     @Test fun savesAndLoadsValidAndUnavailableSamples() = runBlocking {
         val now = Instant.parse("2026-09-03T00:00:00Z")
-        val valid = DrivingSample("duty-1", now, 35.0, 139.0, 5.5, 12.0, 90.0, RoadMode.HIGHWAY2, OccupancyState.OCCUPIED, MeasurementQuality.VALID)
-        val unavailable = DrivingSample("duty-1", now.plusSeconds(1), 0.0, 0.0, 0.0, 0.0, null, RoadMode.GENERAL, OccupancyState.EMPTY, MeasurementQuality.UNAVAILABLE)
+        val valid = DrivingSample("duty-1", now, 35.0, 139.0, 5.5, 12.0, 90.0, RoadMode.HIGHWAY2, OccupancyState.OCCUPIED, MeasurementQuality.VALID, 10L, SpeedSource.REPORTED)
+        val unavailable = DrivingSample("duty-1", now.plusSeconds(1), 0.0, 0.0, 0.0, null, null, RoadMode.GENERAL, OccupancyState.EMPTY, MeasurementQuality.UNAVAILABLE, 20L, SpeedSource.UNAVAILABLE)
 
         repository.save(valid)
         repository.save(unavailable)

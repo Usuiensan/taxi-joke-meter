@@ -13,32 +13,37 @@ class FareCalculatorTest {
     )
 
     @Test fun fullyStoppedLowSpeedSectionUsesTimeOnly() = assertEquals(
-        600,
+        500,
         FareCalculator.calculate(rule, chargeableDistanceMeters = 0, lowSpeedSeconds = 75),
     )
 
     @Test fun lowSpeedTravelDoesNotDoubleCountItsActualDistance() = assertEquals(
-        600,
+        500,
         FareCalculator.calculate(rule, chargeableDistanceMeters = 500, lowSpeedSeconds = 75),
     )
 
-    @Test fun mixedSectionsUseChargeableDistanceAndLowSpeedTime() = assertEquals(
+    @Test fun mixedSectionsAccumulateDistanceAndLowSpeedTime() = assertEquals(
+        700,
+        FareCalculator.calculate(rule, chargeableDistanceMeters = 1_100, lowSpeedSeconds = 75),
+    )
+
+    @Test fun lowSpeedTimeAddsToChargeableDistanceWithoutLowSpeedActualDistance() = assertEquals(
         600,
         FareCalculator.calculate(rule, chargeableDistanceMeters = 900, lowSpeedSeconds = 75),
     )
 
     @Test fun partialDistanceAndLowSpeedTimeDoNotShareActualLowSpeedDistance() = assertEquals(
-        600,
+        700,
         FareCalculator.calculate(rule, chargeableDistanceMeters = 1_150, lowSpeedSeconds = 19),
     )
 
     @Test fun publishedSeventyFiveSecondBoundaryAddsOnce() = assertEquals(
-        600,
+        500,
         FareCalculator.calculate(rule, chargeableDistanceMeters = 0, lowSpeedSeconds = 75),
     )
 
     @Test fun publishedOneHundredFiftySecondBoundaryAddsTwice() = assertEquals(
-        700,
+        500,
         FareCalculator.calculate(rule, chargeableDistanceMeters = 0, lowSpeedSeconds = 150),
     )
 }

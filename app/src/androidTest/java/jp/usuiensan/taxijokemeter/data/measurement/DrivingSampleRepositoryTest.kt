@@ -47,25 +47,33 @@ class DrivingSampleRepositoryTest {
 
         val sameMillisecond = valid.copy(timestamp = now.plusNanos(1))
         repository.save(sameMillisecond)
+        val sameInstant = valid.copy(latitude = 35.1)
+        repository.save(sameInstant)
 
-        assertEquals(listOf(valid, sameMillisecond, unavailable), repository.findAll())
+        assertEquals(listOf(valid, sameInstant, sameMillisecond, unavailable), repository.findAll())
     }
 
     @Test fun migratesVersion2DatabaseAndRoundTripsDrivingSample() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val databaseName = "driving-sample-migration-test.db"
         context.deleteDatabase(databaseName)
-        Room.databaseBuilder(context, V2DutyDatabase::class.java, databaseName).build().close()
+        val now = Instant.parse("2026-09-03T00:00:00Z")
+        Room.databaseBuilder(context, V2DutyDatabase::class.java, databaseName).build().also { v2Database ->
+            v2Database.dutyDao().insertSession(DutySessionEntity("duty-v2", now, null))
+            assertEquals(DutySessionEntity("duty-v2", now, null), v2Database.dutyDao().findSession("duty-v2"))
+            v2Database.close()
+        }
 
         database = DutyDatabase.build(context, databaseName)
         repository = DrivingSampleRepository(database)
         val sample = DrivingSample(
-            Instant.parse("2026-09-03T00:00:00.000000123Z"), 35.0, 139.0, 5.5, 12.0, 90.0,
+            now.plusNanos(123), 35.0, 139.0, 5.5, 12.0, 90.0,
             RoadMode.HIGHWAY2, OccupancyState.OCCUPIED, MeasurementQuality.VALID,
         )
 
         repository.save(sample)
 
+        assertEquals(DutySessionEntity("duty-v2", now, null), database.dutyDao().findSession("duty-v2"))
         assertEquals(listOf(sample), repository.findAll())
     }
 }

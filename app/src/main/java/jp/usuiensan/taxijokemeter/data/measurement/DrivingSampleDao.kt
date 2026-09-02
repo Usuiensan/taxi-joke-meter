@@ -10,6 +10,6 @@ interface DrivingSampleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(sample: DrivingSampleEntity)
 
-    @Query("SELECT * FROM driving_samples ORDER BY timestampEpochSecond ASC, timestampNano ASC")
+    @Query("SELECT * FROM driving_samples ORDER BY timestampEpochSecond ASC, timestampNano ASC, id ASC")
     suspend fun findAll(): List<DrivingSampleEntity>
 }

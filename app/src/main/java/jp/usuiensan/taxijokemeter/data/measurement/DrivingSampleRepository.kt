@@ -16,7 +16,7 @@ class DrivingSampleRepository(private val database: DutyDatabase) {
 }
 
 private fun DrivingSample.toEntity() = DrivingSampleEntity(
-    timestamp.epochSecond, timestamp.nano, latitude, longitude, accuracyMeters, speedMps, bearingDegrees,
+    0, timestamp.epochSecond, timestamp.nano, latitude, longitude, accuracyMeters, speedMps, bearingDegrees,
     roadMode.name, occupancyState.name, measurementQuality.name,
 )
 

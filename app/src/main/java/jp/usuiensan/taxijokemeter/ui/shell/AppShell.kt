@@ -1,5 +1,6 @@
 package jp.usuiensan.taxijokemeter.ui.shell
 
+import android.app.Activity
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
@@ -18,6 +19,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +44,15 @@ import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
 @Composable
 fun AppShell() {
     var showMeter by rememberSaveable { mutableStateOf(false) }
+    val activity = LocalContext.current as Activity
+    DisposableEffect(showMeter) {
+        activity.requestedOrientation = if (showMeter) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        onDispose { }
+    }
     BackHandler(enabled = showMeter) { showMeter = false }
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         if (showMeter) MeterScreen(padding)

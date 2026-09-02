@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,12 +31,11 @@ private val MeterBlack = Color(0xFF080B0E)
 private val MeterBlue = Color(0xFF087FA5)
 private val MeterWhite = Color(0xFFF0F1ED)
 private val MeterRed = Color(0xFFE53B35)
-private val MeterLogicalWidth = 800.dp
-private val MeterLogicalHeight = 480.dp
+private val MeterLogicalWidth = 900.dp
+private val MeterLogicalHeight = 400.dp
 
 @Composable
 fun MeterScreen(contentPadding: PaddingValues) {
-    val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     Box(
         modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
     ) {
@@ -52,15 +50,10 @@ fun MeterScreen(contentPadding: PaddingValues) {
                     scaleY = scale
                 },
             ) {
-                if (isLandscape) LandscapeMeterLayout() else PortraitMeterLayout()
+                LandscapeMeterLayout()
             }
         }
     }
-}
-
-@Composable
-private fun PortraitMeterLayout() {
-    MeterReferenceLayout()
 }
 
 @Composable
@@ -81,7 +74,7 @@ private fun MeterReferenceLayout() {
         }
 
         Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            BalancePanel(Modifier.weight(1f))
+            BalancePanel(Modifier.height(160.dp))
             MeterRow("運賃料金計", "14,850円")
             MeterRow("通行料他", "730円")
             MeterRow("決済合計", "-15,580円")

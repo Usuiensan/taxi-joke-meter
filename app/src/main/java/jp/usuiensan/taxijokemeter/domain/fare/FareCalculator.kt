@@ -3,16 +3,15 @@ package jp.usuiensan.taxijokemeter.domain.fare
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 
 object FareCalculator {
-    fun calculate(rule: FareRule, distanceMeters: Long, lowSpeedSeconds: Long): Long {
-        require(distanceMeters >= 0 && lowSpeedSeconds >= 0)
-        val combinedScaled =
-            distanceMeters * rule.lowSpeedTimeIncrementSeconds +
-                lowSpeedSeconds * rule.distanceIncrementMeters
-        val initialDistanceScaled = rule.initialDistanceMeters * rule.lowSpeedTimeIncrementSeconds
-        val incrementDistanceScaled = rule.distanceIncrementMeters * rule.lowSpeedTimeIncrementSeconds
-        val increments = if (combinedScaled <= initialDistanceScaled) 0 else {
-            (combinedScaled - initialDistanceScaled + incrementDistanceScaled - 1) / incrementDistanceScaled
+    fun calculate(rule: FareRule, chargeableDistanceMeters: Long, lowSpeedSeconds: Long): Long {
+        require(chargeableDistanceMeters >= 0 && lowSpeedSeconds >= 0)
+        val distanceIncrements = if (chargeableDistanceMeters <= rule.initialDistanceMeters) 0 else {
+            (chargeableDistanceMeters - rule.initialDistanceMeters + rule.distanceIncrementMeters - 1) /
+                rule.distanceIncrementMeters
         }
+        val timeIncrements = (lowSpeedSeconds + rule.lowSpeedTimeIncrementSeconds - 1) /
+            rule.lowSpeedTimeIncrementSeconds
+        val increments = maxOf(distanceIncrements, timeIncrements)
         return rule.initialFareYen + increments * rule.distanceIncrementFareYen
     }
 }

@@ -5,10 +5,13 @@ import jp.usuiensan.taxijokemeter.domain.model.FareRule
 object FareCalculator {
     fun calculate(rule: FareRule, distanceMeters: Long, lowSpeedSeconds: Long): Long {
         require(distanceMeters >= 0 && lowSpeedSeconds >= 0)
-        val lowSpeedDistance = rule.lowSpeedLimitKmh.toLong() * lowSpeedSeconds * 5 / 18
-        val billableDistance = distanceMeters + lowSpeedDistance
-        if (billableDistance <= rule.initialDistanceMeters) return rule.initialFareYen
-        val increments = (billableDistance - rule.initialDistanceMeters + rule.distanceIncrementMeters - 1) / rule.distanceIncrementMeters
+        val distanceIncrements = if (distanceMeters <= rule.initialDistanceMeters) 0 else {
+            (distanceMeters - rule.initialDistanceMeters + rule.distanceIncrementMeters - 1) / rule.distanceIncrementMeters
+        }
+        val timeIncrements = if (lowSpeedSeconds == 0L) 0 else {
+            (lowSpeedSeconds + rule.lowSpeedTimeIncrementSeconds - 1) / rule.lowSpeedTimeIncrementSeconds
+        }
+        val increments = maxOf(distanceIncrements, timeIncrements)
         return rule.initialFareYen + increments * rule.distanceIncrementFareYen
     }
 }

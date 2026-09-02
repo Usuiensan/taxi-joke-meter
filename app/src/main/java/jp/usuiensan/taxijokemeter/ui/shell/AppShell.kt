@@ -2,6 +2,7 @@ package jp.usuiensan.taxijokemeter.ui.shell
 
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -20,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -37,6 +42,7 @@ import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
 @Composable
 fun AppShell() {
     var showMeter by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = showMeter) { showMeter = false }
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         if (showMeter) MeterScreen(padding)
         else MeasurementDebugScreen(padding) { showMeter = true }
@@ -54,7 +60,8 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
     val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> permissionGranted = granted }
     val fareRule = remember { FuelCostFareFactory.create(EnergyCostProfile(FuelType.REGULAR, Powertrain.ICE, 180.0, EnergyEfficiency.KmPerLiter(15.0)), 1_000, 200, 10) }
 
-    Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("GPS計測デバッグ")
         Text("位置情報権限: ${if (permissionGranted) "許可" else "未許可"}")
         if (!permissionGranted) Button(onClick = { requestPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }) { Text("権限を許可") }
@@ -67,8 +74,14 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
         Text("最新reported speed: ${snapshot.latestSpeedMps?.let { "%.1f m/s".format(it) } ?: "不明"}")
         Text("保存sample件数: ${snapshot.savedSampleCount}")
         Text("RoadMode: ${snapshot.roadMode}")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RoadMode.entries.forEach { mode -> Button(enabled = snapshot.running, onClick = { controller.updateState(mode, OccupancyState.EMPTY) }) { Text(mode.name) } }
+        if (isLandscape) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RoadMode.entries.forEach { mode -> Button(enabled = snapshot.running, onClick = { controller.updateState(mode, OccupancyState.EMPTY) }) { Text(mode.name, maxLines = 1, softWrap = false) } }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RoadMode.entries.forEach { mode -> Button(enabled = snapshot.running, onClick = { controller.updateState(mode, OccupancyState.EMPTY) }) { Text(mode.name, maxLines = 1, softWrap = false) } }
+            }
         }
         Button(onClick = showMeter) { Text("メーター表示") }
     }

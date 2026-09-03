@@ -6,6 +6,7 @@ import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocodeAddress
 import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocodeResult
 import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocoder
 import jp.usuiensan.taxijokemeter.domain.location.mapReverseGeocode
+import kotlinx.coroutines.CancellationException
 import java.util.Locale
 
 class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
@@ -25,6 +26,8 @@ class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
                     featureDetail = null,
                 ),
             )
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (_: Exception) {
             null
         }

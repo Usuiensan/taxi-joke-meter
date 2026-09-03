@@ -26,9 +26,12 @@ import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
 import jp.usuiensan.taxijokemeter.domain.road.RoadModeController
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,6 +41,7 @@ import java.util.UUID
 class MeterController internal constructor(private val context: Context, private val databaseName: String = "duty.db") {
     @OptIn(ExperimentalCoroutinesApi::class)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val reverseGeocodeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operationMutex = Mutex()
     private val measurement = DutyMeasurementController(context)
     private val reverseGeocoder = AndroidReverseGeocoder(context)
@@ -251,8 +255,14 @@ class MeterController internal constructor(private val context: Context, private
 
     private fun enqueue(operation: suspend () -> Unit) { scope.launch { operationMutex.withLock { operation() } } }
     private fun enqueueReverseGeocode(place: TripPlaceEntity) {
-        scope.launch {
-            val result = reverseGeocoder.reverseGeocode(place.latitude, place.longitude) ?: return@launch
+        reverseGeocodeScope.launchReverseGeocode(Dispatchers.IO) {
+            val result = try {
+                reverseGeocoder.reverseGeocode(place.latitude, place.longitude)
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (_: Exception) {
+                null
+            } ?: return@launchReverseGeocode
             val db = database()
             try {
                 db.dutyDao().updateTripPlaceAddresses(
@@ -269,6 +279,9 @@ class MeterController internal constructor(private val context: Context, private
     private fun event(type: DutyEventType, modeChange: SafetyRoadModeChange? = null) { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).appendEvent(session, DutyEvent(UUID.randomUUID().toString(), type, Instant.now(), null, null, modeChange)) } finally { db.close() } } }
     private fun endDuty() { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }
 }
+
+internal fun CoroutineScope.launchReverseGeocode(dispatcher: CoroutineDispatcher, operation: suspend CoroutineScope.() -> Unit): Job =
+    launch(dispatcher, block = operation)
 
 private fun DrivingSample.toRecordedPlace() = RecordedPlace(latitude, longitude, accuracyMeters, timestamp, null, LocationPrecision.POINT, LocationSource.GPS)
 

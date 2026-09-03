@@ -20,13 +20,10 @@ data class ReverseGeocodeResult(
 
 fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
     if (address == null) return null
-    val featureName = address.featureName?.trim()?.takeIf {
-        it.isNotEmpty() && it != address.canonicalAddress?.trim() && it != address.reportAddress?.trim()
-    }
     return ReverseGeocodeResult(
         canonicalAddress = address.canonicalAddress?.trim()?.takeIf(String::isNotEmpty),
         reportAddress = address.reportAddress?.trim()?.takeIf(String::isNotEmpty),
-        landmarkName = featureName,
-        landmarkDetail = address.featureDetail?.trim()?.takeIf { featureName != null && it.isNotEmpty() },
+        landmarkName = null,
+        landmarkDetail = null,
     )
 }

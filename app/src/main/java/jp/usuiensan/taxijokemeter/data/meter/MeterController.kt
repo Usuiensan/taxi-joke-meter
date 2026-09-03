@@ -14,6 +14,7 @@ import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
+import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import jp.usuiensan.taxijokemeter.domain.model.DutyEvent
 import jp.usuiensan.taxijokemeter.domain.model.DutyEventType
@@ -56,6 +57,14 @@ class MeterController internal constructor(private val context: Context, private
         fareRule = FareRuleStore(context).load()
         sessionId = measurement.ensureMeasurementRunning(fareRule)
         MeterRuntimeStore.update { it.copy(dutySessionId = sessionId, pendingReservation = reservationPreferences().getBoolean(KEY_PENDING_RESERVATION, it.pendingReservation)) }
+        sessionId?.let { currentSession -> enqueue {
+            val db = database()
+            try {
+                DutyRecordRepository(db).findActiveRestInterval(currentSession)?.let { rest ->
+                    MeterRuntimeStore.update { it.copy(meterState = MeterState.REST, menu = MeterMenu.NONE, restIntervalId = rest.id, restStartedAt = rest.startedAt) }
+                }
+            } finally { db.close() }
+        } }
     }
 
     fun dispatch(action: MeterAction) {
@@ -185,9 +194,10 @@ class MeterController internal constructor(private val context: Context, private
 
     fun togglePickupFee() {
         if (MeterRuntimeStore.snapshot.value.meterState !in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) return
+        if (MeterRuntimeStore.snapshot.value.pickupFeeApplied) return
         val amount = TripChargeSettingsStore(context).load().pickupFeeYen
         if (amount <= 0) return
-        MeterRuntimeStore.update { it.copy(pickupFeeApplied = true) }
+        MeterRuntimeStore.update { it.copy(pickupFeeApplied = true, fareChargesYen = it.fareChargesYen + amount, fareYen = it.fareYen + amount) }
         enqueue {
             val tripId = activeTripId() ?: return@enqueue
             val db = database()
@@ -200,7 +210,9 @@ class MeterController internal constructor(private val context: Context, private
         val now = Instant.now()
         val settings = TripChargeSettingsStore(context).load()
         val pendingReservation = MeterRuntimeStore.snapshot.value.pendingReservation
-        MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, currentTripId = null, currentTripNumber = null, chargeProgress = ChargeProgressMapper.initial(fareRule, it.latestSpeedMps), passengerCount = 1, waypointCount = 0, pickupFeeApplied = false, restIntervalId = if (before == MeterState.REST) it.restIntervalId else null, restDistanceMeters = if (before == MeterState.REST) it.restDistanceMeters else 0) }
+        val initialCharges = tripStartCharges(before, pendingReservation, settings.pickupFeeYen, settings.reservationFeeYen)
+        val initialChargeTotal = initialCharges.values.sum()
+        MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen + initialChargeTotal, meteredFareYen = fareRule.initialFareYen, fareChargesYen = initialChargeTotal, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, currentTripId = null, currentTripNumber = null, chargeProgress = ChargeProgressMapper.initial(fareRule, it.latestSpeedMps), passengerCount = 1, waypointCount = 0, pickupFeeApplied = "PICKUP_FEE" in initialCharges, restIntervalId = if (before == MeterState.REST) it.restIntervalId else null, restStartedAt = null, restDistanceMeters = if (before == MeterState.REST) it.restDistanceMeters else 0) }
         val session = currentSessionId() ?: return
         enqueue {
             val db = database()
@@ -211,10 +223,9 @@ class MeterController internal constructor(private val context: Context, private
                 trip = started
                 records.savePickupPlace(started.id, latestValidPlace(DrivingSampleRepository(db)))
                 db.dutyDao().findTripPlace(started.id, "PICKUP", 0)?.let(::enqueueReverseGeocode)
-                val charges = tripStartChargeTypes(before, pendingReservation, settings.pickupFeeYen, settings.reservationFeeYen)
-                charges.forEach { type -> records.addChargeIfAbsent(started.id, type, if (type == "PICKUP_FEE") settings.pickupFeeYen else settings.reservationFeeYen, now) }
+                initialCharges.forEach { (type, amount) -> records.addChargeIfAbsent(started.id, type, amount, now) }
                 records.appendEvent(session, DutyEvent(UUID.randomUUID().toString(), DutyEventType.PICKUP, now, null, null))
-                MeterRuntimeStore.update { it.copy(currentTripId = started.id, currentTripNumber = started.tripNumber, pendingReservation = if (pendingReservation) false else it.pendingReservation, pickupFeeApplied = "PICKUP_FEE" in charges, restIntervalId = null, restDistanceMeters = 0) }
+                MeterRuntimeStore.update { it.copy(currentTripId = started.id, currentTripNumber = started.tripNumber, pendingReservation = if (pendingReservation) false else it.pendingReservation, restIntervalId = null, restStartedAt = null, restDistanceMeters = 0) }
                 if (pendingReservation) reservationPreferences().edit().putBoolean(KEY_PENDING_RESERVATION, false).apply()
                 measurement.updateState(after.roadMode, OccupancyState.OCCUPIED)
                 measurement.beginFareMeasurement(fareRule)
@@ -223,13 +234,14 @@ class MeterController internal constructor(private val context: Context, private
     }
 
     private fun startRest(after: jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState) {
-        MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, restDistanceMeters = 0, restIntervalId = null) }
+        val startedAt = Instant.now()
+        MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, restDistanceMeters = 0, restIntervalId = null, restStartedAt = startedAt) }
         val session = currentSessionId() ?: return
         enqueue {
             measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
             val db = database()
             try {
-                val id = DutyRecordRepository(db).startRestInterval(session, Instant.now(), latestValidPlace(DrivingSampleRepository(db)))
+                val id = DutyRecordRepository(db).startRestInterval(session, startedAt, latestValidPlace(DrivingSampleRepository(db)))
                 MeterRuntimeStore.update { if (it.restIntervalId == null) it.copy(restIntervalId = id) else it }
             } finally { db.close() }
         }
@@ -241,7 +253,7 @@ class MeterController internal constructor(private val context: Context, private
             measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
             val db = database()
             try { MeterRuntimeStore.snapshot.value.restIntervalId?.let { DutyRecordRepository(db).finishRestInterval(it, Instant.now(), reason) } } finally { db.close() }
-            MeterRuntimeStore.update { it.copy(restIntervalId = null, restDistanceMeters = 0) }
+            MeterRuntimeStore.update { it.copy(restIntervalId = null, restStartedAt = null, restDistanceMeters = 0) }
         }
     }
 
@@ -254,7 +266,7 @@ class MeterController internal constructor(private val context: Context, private
 
     private suspend fun finishTrip(status: TripStatus, revenueIncluded: Boolean, value: MeterRuntimeSnapshot) {
         val current = trip ?: return
-        val completed = current.copy(dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.fareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded, actualDistanceMeters = value.actualDistanceMeters, chargeableDistanceMeters = value.chargeableDistanceMeters, meteredFareYen = value.fareYen, totalFareYen = value.fareYen)
+        val completed = current.copy(dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.meteredFareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded, actualDistanceMeters = value.actualDistanceMeters, chargeableDistanceMeters = value.chargeableDistanceMeters, meteredFareYen = value.meteredFareYen, totalFareYen = value.fareYen, additionalChargeYen = value.fareChargesYen)
         val db = database()
         try { DutyRecordRepository(db).finishTrip(completed, status, revenueIncluded) } finally { db.close() }
         trip = null
@@ -312,6 +324,11 @@ internal fun measurementOccupancyState(state: MeterState) = when (state) {
 internal fun tripStartChargeTypes(state: MeterState, pendingReservation: Boolean, pickupFeeYen: Long, reservationFeeYen: Long) = buildSet {
     if (state == MeterState.PICKUP && pickupFeeYen > 0) add("PICKUP_FEE")
     if (pendingReservation && reservationFeeYen > 0) add("RESERVATION")
+}
+
+internal fun tripStartCharges(state: MeterState, pendingReservation: Boolean, pickupFeeYen: Long, reservationFeeYen: Long) = buildMap {
+    if (state == MeterState.PICKUP && pickupFeeYen > 0) put("PICKUP_FEE", pickupFeeYen)
+    if (pendingReservation && reservationFeeYen > 0) put("RESERVATION", reservationFeeYen)
 }
 
 internal fun meterAudioCueForTransition(before: MeterState, after: MeterState) = when {

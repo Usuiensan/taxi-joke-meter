@@ -119,6 +119,8 @@ class DutyRecordRepository(private val database: DutyDatabase) {
     suspend fun finishRestInterval(id: String, endedAt: Instant, reason: String) {
         database.dutyDao().finishRestInterval(id, endedAt, reason)
     }
+
+    suspend fun findActiveRestInterval(sessionId: String): RestIntervalEntity? = database.dutyDao().findActiveRestInterval(sessionId)
 }
 
 private fun Trip.toEntity(sessionId: String) = TripEntity(id, sessionId, pickupAt, dropoffAt, pickupPlace.latitude(), pickupPlace.longitude(), pickupPlace.accuracy(), pickupPlace.recordedAt(), pickupPlace.address(), pickupPlace.precision(), pickupPlace.sourceName(), dropoffPlace.latitude(), dropoffPlace.longitude(), dropoffPlace.accuracy(), dropoffPlace.recordedAt(), dropoffPlace.address(), dropoffPlace.precision(), dropoffPlace.sourceName(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, paymentMethod.name, note, status.name, lowSpeedSeconds, revenueIncluded, serviceDate, tripNumber, actualDistanceMeters, chargeableDistanceMeters, meteredFareYen, totalFareYen, fareInitialDistanceMeters, fareInitialFareYen, fareDistanceIncrementMeters, fareDistanceIncrementFareYen, fareLowSpeedLimitKmh, fareLowSpeedTimeIncrementSeconds)

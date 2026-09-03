@@ -80,30 +80,32 @@ class LocationMeasurementService : Service() {
     private var lastGeocodedLatitude: Double? = null
     private var lastGeocodedLongitude: Double? = null
     private var geocodeInFlight = false
+    private var hasValidGpsFix = false
     private lateinit var currentLocationGeocoder: AndroidReverseGeocoder
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
+            if (sample.isValid) hasValidGpsFix = true
             if (sample.isValid && !geocodeInFlight && shouldRefreshCurrentLocation(lastGeocodedAtMillis, lastGeocodedLatitude, lastGeocodedLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude)) {
                 geocodeInFlight = true
-                MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.LOADING)) }
+                MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.GEOCODING)) }
                 val latitude = sample.latitude
                 val longitude = sample.longitude
                 scope.launch {
-                    val result = try { currentLocationGeocoder.reverseGeocode(latitude, longitude) } catch (exception: CancellationException) { throw exception } catch (_: Exception) { null }
+                    val result = try { currentLocationGeocoder.reverseGeocode(latitude, longitude) } catch (exception: CancellationException) { geocodeInFlight = false; throw exception } catch (_: Exception) { null }
                     lastGeocodedAtMillis = SystemClock.elapsedRealtime()
                     lastGeocodedLatitude = latitude
                     lastGeocodedLongitude = longitude
-                    geocodeInFlight = false
                     MeterRuntimeStore.update { state ->
                         state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null && result.facilityName == null)) {
-                            CurrentLocationDisplayState(status = CurrentLocationStatus.UNAVAILABLE)
+                            CurrentLocationDisplayState(status = CurrentLocationStatus.GEOCODE_UNAVAILABLE)
                         } else {
                             CurrentLocationDisplayState(result.roadName, result.areaText, result.facilityName, CurrentLocationStatus.AVAILABLE)
                         })
                     }
+                    geocodeInFlight = false
                 }
             }
             val accumulation = if (sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
@@ -119,7 +121,8 @@ class LocationMeasurementService : Service() {
                 chargeableDistanceMeters = accumulation?.chargeableDistanceMeters ?: current.chargeableDistanceMeters,
                 actualDistanceMeters = accumulation?.actualDistanceMeters ?: current.actualDistanceMeters,
                 lowSpeedSeconds = accumulation?.lowSpeedSeconds ?: current.lowSpeedSeconds,
-                fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.fareYen,
+                meteredFareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.meteredFareYen,
+                fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) + current.fareChargesYen } ?: current.fareYen,
                 restDistanceMeters = restDistance?.toLong() ?: current.restDistanceMeters,
                 chargeProgress = if (sample.isValid) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
@@ -195,6 +198,8 @@ class LocationMeasurementService : Service() {
             )
             fareMeasurement = FareMeasurementSession(fareRule)
             savedSampleCount.set(0)
+            hasValidGpsFix = false
+            MeterRuntimeStore.update { it.copy(currentLocation = CurrentLocationDisplayState(status = CurrentLocationStatus.GPS_LOADING)) }
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = runtimeState.sampleState.dutySessionId, roadMode = runtimeState.sampleState.roadMode.name))
             MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY, menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU, roadMode = runtimeState.sampleState.roadMode) }
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -230,7 +235,7 @@ class LocationMeasurementService : Service() {
             val result = fareMeasurement?.end()
             result?.let { accumulation -> fareRuleOrNull()?.let { rule ->
                 val fare = FareCalculator.calculate(rule, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds)
-                MeterRuntimeStore.update { state -> state.copy(fareYen = fare, actualDistanceMeters = accumulation.actualDistanceMeters, chargeableDistanceMeters = accumulation.chargeableDistanceMeters, lowSpeedSeconds = accumulation.lowSpeedSeconds) }
+                MeterRuntimeStore.update { state -> state.copy(fareYen = fare + state.fareChargesYen, meteredFareYen = fare, actualDistanceMeters = accumulation.actualDistanceMeters, chargeableDistanceMeters = accumulation.chargeableDistanceMeters, lowSpeedSeconds = accumulation.lowSpeedSeconds) }
                 MeterRuntimeStore.snapshot.value.currentTripId?.let { tripId -> scope.launch { DutyRecordRepository(database).updateTripMeasurement(tripId, accumulation.actualDistanceMeters, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds, fare) } }
             } }
             Log.i(TAG, "料金計測=終了 結果=${result ?: "未開始"}")
@@ -263,6 +268,7 @@ class LocationMeasurementService : Service() {
                 meterState = after.meterState,
                 menu = after.menu,
                 restIntervalId = null,
+                restStartedAt = null,
                 restDistanceMeters = restDistance.toLong(),
             )
         }
@@ -323,8 +329,8 @@ class LocationMeasurementService : Service() {
                 lastLoggedHealth = health
             }
             MeasurementDebugStore.update { it.copy(health = health) }
-            if (health == LocationHealth.UNAVAILABLE && MeterRuntimeStore.snapshot.value.currentLocation.roadName == null && MeterRuntimeStore.snapshot.value.currentLocation.areaText == null) {
-                MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.UNAVAILABLE)) }
+            if (!hasValidGpsFix && health == LocationHealth.UNAVAILABLE) {
+                MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.GPS_UNAVAILABLE)) }
             }
             healthHandler.postDelayed(this, 1_000L)
         }

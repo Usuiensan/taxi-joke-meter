@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 class MeterPresentationTest {
     @Test
@@ -104,6 +105,18 @@ class MeterPresentationTest {
 
     @Test fun emptyMenuUsesFixedMenuSoftKeySlots() {
         assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY, true))
+    }
+
+    @Test fun emptyPickupSoftKeyDispatchesPickupAction() {
+        assertEquals(MeterAction.PICKUP, emptySoftKeyAction("迎車"))
+        val machine = MeterStateMachine(MeterRuntimeState(meterState = MeterState.EMPTY))
+        assertEquals(MeterState.PICKUP, machine.dispatch(emptySoftKeyAction("迎車")!!).meterState)
+    }
+
+    @Test fun restDurationUsesHoursAndMinutes() {
+        val start = Instant.parse("2026-09-04T00:00:00Z")
+        assertEquals("0時間00分", formatRestDuration(start, start))
+        assertEquals("1時間05分", formatRestDuration(start, start.plusSeconds(65 * 60L)))
     }
 
     @Test fun reservationButtonReflectsPendingState() {

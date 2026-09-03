@@ -29,6 +29,8 @@ data class MeterRuntimeSnapshot(
     val dutyActivity: DutyActivity = DutyActivity.WORKING,
     val roadMode: RoadMode = RoadMode.GENERAL,
     val fareYen: Long = 0,
+    val meteredFareYen: Long = 0,
+    val fareChargesYen: Long = 0,
     val chargeableDistanceMeters: Long = 0,
     val actualDistanceMeters: Long = 0,
     val lowSpeedSeconds: Long = 0,
@@ -47,18 +49,19 @@ data class MeterRuntimeSnapshot(
     val waypointCount: Int = 0,
     val pickupFeeApplied: Boolean = false,
     val restIntervalId: String? = null,
+    val restStartedAt: java.time.Instant? = null,
     val restDistanceMeters: Long = 0,
     val safetyWarning: SafetyWarning? = null,
     val currentLocation: CurrentLocationDisplayState = CurrentLocationDisplayState(),
 )
 
-enum class CurrentLocationStatus { LOADING, AVAILABLE, UNAVAILABLE }
+enum class CurrentLocationStatus { GPS_LOADING, GEOCODING, AVAILABLE, GEOCODE_UNAVAILABLE, GPS_UNAVAILABLE }
 
 data class CurrentLocationDisplayState(
     val roadName: String? = null,
     val areaText: String? = null,
     val facilityName: String? = null,
-    val status: CurrentLocationStatus = CurrentLocationStatus.LOADING,
+    val status: CurrentLocationStatus = CurrentLocationStatus.GPS_LOADING,
 )
 
 internal fun MeterRuntimeSnapshot.toMeterRuntimeState() = MeterRuntimeState(dutyLifecycle, meterState, dutyActivity, roadMode, menu)
@@ -84,7 +87,7 @@ object MeterRuntimeStore {
     val snapshot: StateFlow<MeterRuntimeSnapshot> = _snapshot.asStateFlow()
     private val warningScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     fun update(transform: (MeterRuntimeSnapshot) -> MeterRuntimeSnapshot) { _snapshot.update(transform) }
-    fun resetMeter() { update { it.copy(fareYen = 0, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null, pendingReservation = false, passengerCount = 1, waypointCount = 0, pickupFeeApplied = false, restIntervalId = null, restDistanceMeters = 0) } }
+    fun resetMeter() { update { it.copy(fareYen = 0, meteredFareYen = 0, fareChargesYen = 0, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null, pendingReservation = false, passengerCount = 1, waypointCount = 0, pickupFeeApplied = false, restIntervalId = null, restStartedAt = null, restDistanceMeters = 0) } }
 
     fun showSafetyWarning(text: String, nowElapsedRealtimeMillis: Long) {
         val warning = SafetyWarning(UUID.randomUUID().toString(), snapshot.value.meterState, nowElapsedRealtimeMillis, nowElapsedRealtimeMillis + 3_000L, text)

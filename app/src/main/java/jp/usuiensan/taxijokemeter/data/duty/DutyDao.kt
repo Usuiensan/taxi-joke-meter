@@ -34,6 +34,8 @@ interface DutyDao {
     suspend fun findTripCharges(tripId: String): List<TripChargeEntity>
     @Query("SELECT * FROM rest_intervals WHERE id = :id")
     suspend fun findRestInterval(id: String): RestIntervalEntity?
+    @Query("SELECT * FROM rest_intervals WHERE sessionId = :sessionId AND endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    suspend fun findActiveRestInterval(sessionId: String): RestIntervalEntity?
     @Query("UPDATE trip_places SET canonicalAddress = COALESCE(:canonicalAddress, canonicalAddress), reportAddress = COALESCE(:reportAddress, reportAddress), landmarkName = COALESCE(:landmarkName, landmarkName), landmarkDetail = COALESCE(:landmarkDetail, landmarkDetail) WHERE id = :id AND recordedAt = :recordedAt AND latitude = :latitude AND longitude = :longitude")
     suspend fun updateTripPlaceAddresses(id: String, recordedAt: Instant, latitude: Double, longitude: Double, canonicalAddress: String?, reportAddress: String?, landmarkName: String?, landmarkDetail: String?)
     @Query("UPDATE trips SET passengerCount = :passengerCount WHERE id = :id")

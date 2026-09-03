@@ -57,6 +57,10 @@ class MeterControllerOperationsTest {
         assertEquals(emptySet<String>(), tripStartChargeTypes(MeterState.EMPTY, true, 0, 0))
     }
 
+    @Test fun tripStartChargesKeepConfiguredAmountsForFareAggregation() {
+        assertEquals(mapOf("PICKUP_FEE" to 100L, "RESERVATION" to 500L), tripStartCharges(MeterState.PICKUP, true, 100, 500))
+    }
+
     @Test fun passengerCountIsClampedToOneThroughNine() {
         assertEquals(1, clampPassengerCount(0))
         assertEquals(9, clampPassengerCount(12))

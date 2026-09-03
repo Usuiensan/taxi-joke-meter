@@ -46,4 +46,10 @@ class AudioCuePlayerTest {
         assertEquals(MeterAudioCue.HARD_ACCELERATION, SafetyEventType.HARD_ACCELERATION.toMeterAudioCue())
         assertEquals(MeterAudioCue.HARD_DECELERATION, SafetyEventType.HARD_DECELERATION.toMeterAudioCue())
     }
+
+    @Test fun safetyCuesUseTheSharedNotificationBeepResource() {
+        assertEquals("safety_notification_beep", MeterAudioResources.resourceName(MeterAudioCue.OVERSPEED))
+        assertEquals("safety_notification_beep", MeterAudioResources.resourceName(MeterAudioCue.HARD_ACCELERATION))
+        assertEquals("safety_notification_beep", MeterAudioResources.resourceName(MeterAudioCue.HARD_DECELERATION))
+    }
 }

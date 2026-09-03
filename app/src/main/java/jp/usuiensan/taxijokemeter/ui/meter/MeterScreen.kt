@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,7 +89,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
         }
 
         Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            BalancePanel(Modifier.height(160.dp), runtime, controller)
+            BalancePanel(Modifier.height(228.dp), runtime, controller)
             Spacer(Modifier.weight(1f))
             BottomControls(runtime, controller)
         }
@@ -131,7 +133,7 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                     Text("実車", color = MeterWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     runtime.chargeProgress?.let { ChargeProgressRail(it.mode, it.fraction) }
                     Box(
-                        modifier = Modifier.fillMaxWidth().height(96.dp)
+                        modifier = Modifier.fillMaxWidth().height(128.dp)
                             .background(
                                 androidx.compose.ui.graphics.Brush.verticalGradient(
                                     0.0f to Color.Transparent,
@@ -141,13 +143,26 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                             ),
                         contentAlignment = Alignment.BottomCenter,
                     ) {
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("運賃", color = MeterWhite, fontSize = 20.sp)
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text(runtime.fareYen.formatYen(), color = MeterWhite, fontSize = 76.sp, fontWeight = FontWeight.Light, maxLines = 1, softWrap = false)
-                                Text("円", color = MeterWhite, fontSize = 24.sp, modifier = Modifier.padding(bottom = 8.dp))
-                            }
-                        }
+                        Text(
+                            "運賃",
+                            color = MeterWhite,
+                            fontSize = 20.sp,
+                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 8.dp),
+                        )
+                        Text(
+                            "${runtime.fareYen.formatYen()}円",
+                            color = MeterWhite,
+                            style = TextStyle(
+                                fontSize = 76.sp,
+                                lineHeight = 84.sp,
+                                fontWeight = FontWeight.Light,
+                                platformStyle = PlatformTextStyle(includeFontPadding = true),
+                            ),
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp),
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Visible,
+                        )
                     }
                 }
             }

@@ -177,29 +177,29 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                             ),
                         contentAlignment = Alignment.BottomCenter,
                     ) {
-                        val fareFontSize = (maxHeight.value * 0.38f).coerceIn(100f, 150f).sp
+                        val fare = formatFareAmount(runtime.fareYen)
+                        val sizing = fareDisplaySizing(MeterState.OCCUPIED, maxHeight.value, fare.number)
                         Text(
                             "運賃",
                             color = MeterWhite,
                             fontSize = 20.sp,
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 8.dp),
                         )
-                        val fare = formatFareAmount(runtime.fareYen)
                         Row(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 10.dp),
+                            verticalAlignment = Alignment.Bottom,
                         ) {
                             Text(
                                 fare.number,
                                 color = MeterWhite,
                                 style = TextStyle(
                                     fontFamily = MeterFontFamily,
-                                    fontSize = fareFontSize,
-                                    lineHeight = fareFontSize * 1.08f,
+                                    fontSize = sizing.numberSp.sp,
+                                    lineHeight = sizing.numberSp.sp * 1.08f,
                                     fontWeight = FontWeight.Light,
                                     fontFeatureSettings = "tnum",
                                     platformStyle = PlatformTextStyle(includeFontPadding = true),
                                 ),
-                                modifier = Modifier.alignByBaseline(),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Clip,
@@ -209,12 +209,11 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                                 color = MeterWhite,
                                 style = TextStyle(
                                     fontFamily = MeterFontFamily,
-                                    fontSize = 26.sp,
-                                    lineHeight = 32.sp,
+                                    fontSize = sizing.unitSp.sp,
+                                    lineHeight = sizing.unitSp.sp * 1.08f,
                                     fontFeatureSettings = "tnum",
                                     platformStyle = PlatformTextStyle(includeFontPadding = true),
                                 ),
-                                modifier = Modifier.alignByBaseline(),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Clip,
@@ -234,8 +233,8 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
 @Composable
 private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
     Column(Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier.fillMaxWidth().height(108.dp).background(
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxWidth().height(150.dp).background(
                 androidx.compose.ui.graphics.Brush.verticalGradient(
                     0.0f to MeterBlack,
                     0.68f to MeterBlack,
@@ -245,14 +244,15 @@ private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
         ) {
             Text("合計", color = MeterWhite, fontSize = 20.sp, modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 10.dp))
             val fare = formatFareAmount(runtime.fareYen)
+            val sizing = fareDisplaySizing(runtime.meterState, maxHeight.value, fare.number)
             Row(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.Bottom,
             ) {
                 Text(
                     fare.number,
                     color = MeterWhite,
-                    style = TextStyle(fontFamily = MeterFontFamily, fontSize = 68.sp, lineHeight = 74.sp, fontWeight = FontWeight.Light, fontFeatureSettings = "tnum", platformStyle = PlatformTextStyle(includeFontPadding = true)),
-                    modifier = Modifier.alignByBaseline(),
+                    style = TextStyle(fontFamily = MeterFontFamily, fontSize = sizing.numberSp.sp, lineHeight = sizing.numberSp.sp * 1.08f, fontWeight = FontWeight.Light, fontFeatureSettings = "tnum", platformStyle = PlatformTextStyle(includeFontPadding = true)),
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip,
@@ -260,8 +260,7 @@ private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
                 Text(
                     fare.unit,
                     color = MeterWhite,
-                    style = TextStyle(fontFamily = MeterFontFamily, fontSize = 22.sp, lineHeight = 28.sp, fontFeatureSettings = "tnum", platformStyle = PlatformTextStyle(includeFontPadding = true)),
-                    modifier = Modifier.alignByBaseline(),
+                    style = TextStyle(fontFamily = MeterFontFamily, fontSize = sizing.unitSp.sp, lineHeight = sizing.unitSp.sp * 1.08f, fontFeatureSettings = "tnum", platformStyle = PlatformTextStyle(includeFontPadding = true)),
                     maxLines = 1,
                     softWrap = false,
                 )
@@ -386,6 +385,20 @@ internal fun chargeRailGeometry(trackStartX: Float, trackWidth: Float, fraction:
 internal data class FareAmountParts(val number: String, val unit: String)
 
 internal fun formatFareAmount(yen: Long) = FareAmountParts(yen.formatYen(), "円")
+
+internal data class FareDisplaySizing(val numberSp: Float, val unitSp: Float)
+
+internal fun fareDisplaySizing(state: MeterState, availableHeightDp: Float, number: String): FareDisplaySizing {
+    val base = (availableHeightDp * if (state == MeterState.OCCUPIED) 0.55f else 0.70f)
+        .coerceIn(if (state == MeterState.OCCUPIED) 120f else 96f, if (state == MeterState.OCCUPIED) 150f else 132f)
+    val digitScale = when {
+        number.length <= 3 -> 1f
+        number.length <= 5 -> 0.92f
+        else -> 0.82f
+    }
+    val numberSp = base * digitScale
+    return FareDisplaySizing(numberSp, numberSp * 0.4f)
+}
 
 internal fun roadModeButtonModes() = listOf(RoadMode.GENERAL, RoadMode.HIGHWAY1, RoadMode.HIGHWAY2)
 

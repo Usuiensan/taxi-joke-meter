@@ -105,4 +105,15 @@ class MeterPresentationTest {
         assertEquals(12f, chargeRailGeometry(12f, 400f, -1f).knobCenterX, 0f)
         assertEquals(412f, chargeRailGeometry(12f, 400f, 2f).knobCenterX, 0f)
     }
+
+    @Test fun fareDisplaySizingKeepsCurrencySmallerAndAdaptsToDigits() {
+        val shortOccupied = fareDisplaySizing(MeterState.OCCUPIED, 280f, "20")
+        val longOccupied = fareDisplaySizing(MeterState.OCCUPIED, 280f, "12,340")
+        val payment = fareDisplaySizing(MeterState.PAYMENT, 220f, "2,700")
+        assertTrue(shortOccupied.numberSp in 120f..150f)
+        assertTrue(longOccupied.numberSp < shortOccupied.numberSp)
+        assertEquals(shortOccupied.numberSp * 0.4f, shortOccupied.unitSp, 0.01f)
+        assertTrue(payment.numberSp >= 96f)
+        assertTrue(payment.numberSp < shortOccupied.numberSp)
+    }
 }

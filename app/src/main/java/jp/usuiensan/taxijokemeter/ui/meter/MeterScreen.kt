@@ -408,7 +408,14 @@ internal fun showsChargeProgressRail(state: MeterState) = state == MeterState.OC
 @Composable
 private fun MeterButton(text: String, background: Color, modifier: Modifier = Modifier, textColor: Color = MeterWhite, size: androidx.compose.ui.unit.TextUnit = 17.sp, onClick: (() -> Unit)? = null) {
     val shape = RoundedCornerShape(2.dp)
-    Box(modifier = modifier.then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)).shadow(3.dp, shape).background(background, shape).border(1.dp, Color(0xFF273238), shape).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+    val highlight = Color(
+        red = background.red + (1f - background.red) * 0.35f,
+        green = background.green + (1f - background.green) * 0.35f,
+        blue = background.blue + (1f - background.blue) * 0.35f,
+        alpha = background.alpha,
+    )
+    val shade = Color(background.red * 0.55f, background.green * 0.55f, background.blue * 0.55f, background.alpha)
+    Box(modifier = modifier.then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)).shadow(8.dp, shape).background(Brush.verticalGradient(listOf(highlight, background, shade)), shape).border(2.dp, Color(0xFF273238), shape).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
         Text(text, color = textColor, fontWeight = FontWeight.Bold, fontSize = size, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
     }
 }

@@ -79,8 +79,8 @@ private val MeterLogicalWidth = 900.dp
 private val MeterLogicalHeight = 400.dp
 private val MeterSoftKeyHeight = 56.dp
 private val MeterFontFamily = FontFamily(
-    Font(R.font.biz_udgothic_regular),
-    Font(R.font.biz_udgothic_bold, FontWeight.Bold),
+    Font(R.font.biz_udpgothic_regular),
+    Font(R.font.biz_udpgothic_bold, FontWeight.Bold),
 )
 
 @Composable

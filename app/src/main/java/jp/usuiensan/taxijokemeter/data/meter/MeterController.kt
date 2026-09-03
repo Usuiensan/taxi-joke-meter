@@ -60,7 +60,7 @@ class MeterController(private val context: Context) {
                     val now = Instant.now()
                     trip = Trip(UUID.randomUUID().toString(), now, null, null, null, 0, 0, 0, 0, jp.usuiensan.taxijokemeter.domain.model.PaymentMethod.UNKNOWN, null)
                     MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) }
-                    measurement.beginFareMeasurement(); event(DutyEventType.PICKUP)
+                    measurement.beginFareMeasurement(fareRule); event(DutyEventType.PICKUP)
                 } else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) {
                     MeterRuntimeStore.update { it.copy(meterState = after.meterState) }
                     measurement.updateState(before.roadMode, OccupancyState.OCCUPIED)

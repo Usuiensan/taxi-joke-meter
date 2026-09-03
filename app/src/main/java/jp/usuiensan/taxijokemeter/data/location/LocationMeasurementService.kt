@@ -167,7 +167,11 @@ class LocationMeasurementService : Service() {
             MeasurementDebugStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode.name) }
             MeterRuntimeStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode) }
         } else if (intent?.action == ACTION_BEGIN_FARE) {
-            val session = ensureFareMeasurementInitialized() ?: return START_NOT_STICKY
+            if (fareMeasurement?.isActive == true) return START_NOT_STICKY
+            val rule = intent.fareRuleOrNull() ?: fareRuleOrNull() ?: return START_NOT_STICKY
+            fareRule = rule
+            val session = FareMeasurementSession(rule)
+            fareMeasurement = session
             runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.OCCUPIED)
             session.begin(OccupancyState.OCCUPIED)
             session.setOccupancyState(OccupancyState.OCCUPIED)
@@ -205,6 +209,21 @@ class LocationMeasurementService : Service() {
     }
 
     private fun fareRuleOrNull(): FareRule? = if (::fareRule.isInitialized) fareRule else FareRuleStore(this).load()
+
+    private fun Intent.fareRuleOrNull(): FareRule? {
+        if (!hasExtra(EXTRA_INITIAL_DISTANCE_METERS) || !hasExtra(EXTRA_INITIAL_FARE_YEN) ||
+            !hasExtra(EXTRA_DISTANCE_INCREMENT_METERS) || !hasExtra(EXTRA_DISTANCE_INCREMENT_FARE_YEN) ||
+            !hasExtra(EXTRA_LOW_SPEED_LIMIT_KMH) || !hasExtra(EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS)
+        ) return null
+        return FareRule(
+            getLongExtra(EXTRA_INITIAL_DISTANCE_METERS, 0L),
+            getLongExtra(EXTRA_INITIAL_FARE_YEN, 0L),
+            getLongExtra(EXTRA_DISTANCE_INCREMENT_METERS, 0L),
+            getLongExtra(EXTRA_DISTANCE_INCREMENT_FARE_YEN, 0L),
+            getIntExtra(EXTRA_LOW_SPEED_LIMIT_KMH, 0),
+            getIntExtra(EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS, 0),
+        )
+    }
 
     private fun startForegroundCompat() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)

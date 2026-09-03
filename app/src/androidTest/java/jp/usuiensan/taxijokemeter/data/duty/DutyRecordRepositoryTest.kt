@@ -20,6 +20,7 @@ import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -152,6 +153,38 @@ class DutyRecordRepositoryTest {
         assertEquals(35.74, dropoffs.single().latitude, 0.0)
     }
 
+    @Test fun staleDropoffGeocodeCannotUpdateNewerCoordinates() = runBlocking {
+        val trip = createTrip()
+        repository.upsertDropoff(trip.id, place(trip.pickupAt))
+        val staleDropoff = database.dutyDao().findTripPlace(trip.id, "DROPOFF", 0)!!
+        repository.upsertDropoff(trip.id, place(trip.pickupAt.plusSeconds(60)).copy(latitude = 35.74))
+
+        database.dutyDao().updateTripPlaceAddresses(
+            id = staleDropoff.id,
+            recordedAt = staleDropoff.recordedAt,
+            latitude = staleDropoff.latitude,
+            longitude = staleDropoff.longitude,
+            canonicalAddress = "古い住所",
+            reportAddress = null,
+            landmarkName = null,
+            landmarkDetail = null,
+        )
+
+        val currentDropoff = database.dutyDao().findTripPlace(trip.id, "DROPOFF", 0)!!
+        assertNull(currentDropoff.canonicalAddress)
+        database.dutyDao().updateTripPlaceAddresses(
+            id = currentDropoff.id,
+            recordedAt = currentDropoff.recordedAt,
+            latitude = currentDropoff.latitude,
+            longitude = currentDropoff.longitude,
+            canonicalAddress = "新しい住所",
+            reportAddress = null,
+            landmarkName = null,
+            landmarkDetail = null,
+        )
+        assertEquals("新しい住所", database.dutyDao().findTripPlace(trip.id, "DROPOFF", 0)?.canonicalAddress)
+    }
+
     @Test fun passengerCountAndRestFinishFieldsAreUpdated() = runBlocking {
         val trip = createTrip()
         repository.updatePassengerCount(trip.id, 4)
@@ -167,6 +200,20 @@ class DutyRecordRepositoryTest {
         assertEquals(1_250L, rest!!.distanceMeters)
         assertEquals(endedAt, rest.endedAt)
         assertEquals("AUTO_DISTANCE_1KM", rest.endReason)
+    }
+
+    @Test fun restFinishKeepsTheFirstEndTimeAndReason() = runBlocking {
+        repository.save(DutySession("duty-1", Instant.EPOCH, null))
+        val restId = repository.startRestInterval("duty-1", Instant.EPOCH)
+        val automaticEnd = Instant.parse("2026-09-03T01:00:00Z")
+
+        repository.finishRestInterval(restId, automaticEnd, "AUTO_DISTANCE_1KM")
+        repository.finishRestInterval(restId, automaticEnd.plusSeconds(1), "MANUAL")
+        repository.finishRestInterval(restId, automaticEnd.plusSeconds(2), "OCCUPIED_STARTED")
+
+        val rest = database.dutyDao().findRestInterval(restId)
+        assertEquals(automaticEnd, rest?.endedAt)
+        assertEquals("AUTO_DISTANCE_1KM", rest?.endReason)
     }
 
     @Test fun placeOperationsWithoutCoordinatesSucceedWithoutSavingPlaces() = runBlocking {

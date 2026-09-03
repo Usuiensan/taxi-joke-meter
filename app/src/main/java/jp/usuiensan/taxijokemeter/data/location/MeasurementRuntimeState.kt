@@ -13,6 +13,10 @@ data class MeasurementRuntimeState(
     fun updateState(roadMode: RoadMode, occupancyState: OccupancyState) =
         copy(
             sampleState = sampleState.copy(roadMode = roadMode, occupancyState = occupancyState),
+            previousSample = if (
+                sampleState.occupancyState != occupancyState &&
+                (sampleState.occupancyState == OccupancyState.REST || occupancyState == OccupancyState.REST)
+            ) null else previousSample,
             restDistanceMeters = if (sampleState.occupancyState == OccupancyState.REST && occupancyState == OccupancyState.REST) restDistanceMeters else 0.0,
         )
 

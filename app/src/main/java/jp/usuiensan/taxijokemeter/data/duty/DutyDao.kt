@@ -34,11 +34,11 @@ interface DutyDao {
     suspend fun findTripCharges(tripId: String): List<TripChargeEntity>
     @Query("SELECT * FROM rest_intervals WHERE id = :id")
     suspend fun findRestInterval(id: String): RestIntervalEntity?
-    @Query("UPDATE trip_places SET canonicalAddress = COALESCE(:canonicalAddress, canonicalAddress), reportAddress = COALESCE(:reportAddress, reportAddress), landmarkName = COALESCE(:landmarkName, landmarkName), landmarkDetail = COALESCE(:landmarkDetail, landmarkDetail) WHERE id = :id")
-    suspend fun updateTripPlaceAddresses(id: String, canonicalAddress: String?, reportAddress: String?, landmarkName: String?, landmarkDetail: String?)
+    @Query("UPDATE trip_places SET canonicalAddress = COALESCE(:canonicalAddress, canonicalAddress), reportAddress = COALESCE(:reportAddress, reportAddress), landmarkName = COALESCE(:landmarkName, landmarkName), landmarkDetail = COALESCE(:landmarkDetail, landmarkDetail) WHERE id = :id AND recordedAt = :recordedAt AND latitude = :latitude AND longitude = :longitude")
+    suspend fun updateTripPlaceAddresses(id: String, recordedAt: Instant, latitude: Double, longitude: Double, canonicalAddress: String?, reportAddress: String?, landmarkName: String?, landmarkDetail: String?)
     @Query("UPDATE trips SET passengerCount = :passengerCount WHERE id = :id")
     suspend fun updatePassengerCount(id: String, passengerCount: Int)
-    @Query("UPDATE rest_intervals SET endedAt = :endedAt, endReason = :endReason WHERE id = :id")
+    @Query("UPDATE rest_intervals SET endedAt = :endedAt, endReason = :endReason WHERE id = :id AND endedAt IS NULL")
     suspend fun finishRestInterval(id: String, endedAt: Instant, endReason: String)
     @Query("UPDATE rest_intervals SET distanceMeters = :distanceMeters WHERE id = :id")
     suspend fun updateRestDistance(id: String, distanceMeters: Long)

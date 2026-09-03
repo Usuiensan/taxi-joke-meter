@@ -18,6 +18,8 @@ import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
+import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.DutySession
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
@@ -30,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 @RunWith(AndroidJUnit4::class)
 class MeterControllerOperationOrderingTest {
@@ -64,6 +67,26 @@ class MeterControllerOperationOrderingTest {
 
         waitUntil { restCount() == 1 }
         assertEquals(1, restCount())
+    }
+
+    @Test fun autoCompletedRestIsEmptyForRoadModeAndReservationEligibility() = runBlocking {
+        val controller = MeterController(context, context.databaseName)
+        controller.dispatch(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.REST)
+        waitUntil { MeterRuntimeStore.snapshot.value.restIntervalId != null }
+        MeterRuntimeStore.update {
+            it.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU, restIntervalId = null)
+        }
+        MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = sessionId))
+        context.startedServices.clear()
+
+        controller.setRoadMode(RoadMode.HIGHWAY1)
+        controller.toggleReservation()
+
+        waitUntil { context.startedServices.any { it.action == LocationMeasurementService.ACTION_UPDATE_STATE } }
+        val stateUpdate = context.startedServices.last { it.action == LocationMeasurementService.ACTION_UPDATE_STATE }
+        assertEquals(OccupancyState.EMPTY.name, stateUpdate.getStringExtra(LocationMeasurementService.EXTRA_OCCUPANCY_STATE))
+        assertTrue(MeterRuntimeStore.snapshot.value.pendingReservation)
+        waitUntil { DutyRecordRepository(database).findById(sessionId)!!.events.any { it.type.name == "SAFETY_ROAD_MODE_CHANGE" } }
     }
 
     @Test fun immediateTripOperationsPersistOneCompletedTripThenOneNewActiveTrip() = runBlocking {
@@ -159,11 +182,13 @@ class MeterControllerOperationOrderingTest {
 
 private class IsolatedControllerContext(base: Context, val databaseName: String) : ContextWrapper(base) {
     var delegateServiceStarts = false
+    val startedServices = CopyOnWriteArrayList<Intent>()
 
     override fun getApplicationContext(): Context = this
     override fun getDatabasePath(name: String) = baseContext.getDatabasePath(databaseName)
     override fun getSharedPreferences(name: String, mode: Int) = baseContext.getSharedPreferences("$databaseName-$name", mode)
     override fun startService(service: Intent): ComponentName? {
+        startedServices += service
         return if (delegateServiceStarts) baseContext.startService(service)
         else ComponentName(baseContext.packageName, service.component?.className ?: "test")
     }

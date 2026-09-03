@@ -46,7 +46,6 @@ class MeterController internal constructor(private val context: Context, private
     private val measurement = DutyMeasurementController(context)
     private val reverseGeocoder = AndroidReverseGeocoder(context)
     private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context))
-    private val machine = MeterStateMachine()
     private val roadModeController = RoadModeController()
     private var sessionId: String? = null
     private var trip: Trip? = null
@@ -61,7 +60,7 @@ class MeterController internal constructor(private val context: Context, private
 
     fun dispatch(action: MeterAction) {
         if (action == MeterAction.DEPART && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
-        if (machine.state.meterState == MeterState.REST && MeterRuntimeStore.snapshot.value.meterState == MeterState.EMPTY && MeterRuntimeStore.snapshot.value.restIntervalId == null) machine.dispatch(MeterAction.REST_RELEASE)
+        val machine = MeterStateMachine(MeterRuntimeStore.snapshot.value.toMeterRuntimeState())
         val before = machine.state
         if (action == MeterAction.PAYMENT && !shouldProcessPayment(before.meterState)) return
         if (action == MeterAction.TOTAL && !shouldFinalizePayment(before.meterState)) return
@@ -138,20 +137,21 @@ class MeterController internal constructor(private val context: Context, private
     }
 
     fun setRoadMode(mode: RoadMode) {
+        val machine = MeterStateMachine(MeterRuntimeStore.snapshot.value.toMeterRuntimeState())
         val transition = roadModeController.select(machine.state.roadMode, mode)
         if (transition.safetyRoadModeChange == null) return
-        machine.setRoadMode(transition.nextMode)
+        val after = machine.setRoadMode(transition.nextMode)
         MeterRuntimeStore.update { it.copy(roadMode = transition.nextMode) }
-        enqueue { measurement.updateState(transition.nextMode, measurementOccupancyState(machine.state.meterState)) }
+        enqueue { measurement.updateState(transition.nextMode, measurementOccupancyState(after.meterState)) }
         event(DutyEventType.SAFETY_ROAD_MODE_CHANGE, transition.safetyRoadModeChange)
     }
 
     fun toggleReservation() {
-        if (machine.state.meterState in setOf(MeterState.EMPTY, MeterState.PICKUP)) MeterRuntimeStore.update { it.copy(pendingReservation = !it.pendingReservation) }
+        if (MeterRuntimeStore.snapshot.value.meterState in setOf(MeterState.EMPTY, MeterState.PICKUP)) MeterRuntimeStore.update { it.copy(pendingReservation = !it.pendingReservation) }
     }
 
     fun changePassengerCount(passengerCount: Int) {
-        if (machine.state.meterState !in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) return
+        if (MeterRuntimeStore.snapshot.value.meterState !in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) return
         val count = clampPassengerCount(passengerCount)
         MeterRuntimeStore.update { it.copy(passengerCount = count) }
         enqueue {
@@ -162,7 +162,7 @@ class MeterController internal constructor(private val context: Context, private
     }
 
     fun addWaypoint() {
-        if (machine.state.meterState != MeterState.OCCUPIED) return
+        if (MeterRuntimeStore.snapshot.value.meterState != MeterState.OCCUPIED) return
         enqueue {
             val tripId = activeTripId() ?: return@enqueue
             val db = database()
@@ -178,7 +178,7 @@ class MeterController internal constructor(private val context: Context, private
     }
 
     fun togglePickupFee() {
-        if (machine.state.meterState !in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) return
+        if (MeterRuntimeStore.snapshot.value.meterState !in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) return
         val amount = TripChargeSettingsStore(context).load().pickupFeeYen
         if (amount <= 0) return
         MeterRuntimeStore.update { it.copy(pickupFeeApplied = true) }
@@ -209,7 +209,7 @@ class MeterController internal constructor(private val context: Context, private
                 charges.forEach { type -> records.addChargeIfAbsent(started.id, type, if (type == "PICKUP_FEE") settings.pickupFeeYen else settings.reservationFeeYen, now) }
                 records.appendEvent(session, DutyEvent(UUID.randomUUID().toString(), DutyEventType.PICKUP, now, null, null))
                 MeterRuntimeStore.update { it.copy(currentTripId = started.id, currentTripNumber = started.tripNumber, pendingReservation = if (pendingReservation) false else it.pendingReservation, pickupFeeApplied = "PICKUP_FEE" in charges, restIntervalId = null, restDistanceMeters = 0) }
-                measurement.updateState(machine.state.roadMode, OccupancyState.OCCUPIED)
+                measurement.updateState(after.roadMode, OccupancyState.OCCUPIED)
                 measurement.beginFareMeasurement(fareRule)
             } finally { db.close() }
         }
@@ -267,6 +267,9 @@ class MeterController internal constructor(private val context: Context, private
             try {
                 db.dutyDao().updateTripPlaceAddresses(
                     place.id,
+                    place.recordedAt,
+                    place.latitude,
+                    place.longitude,
                     result.canonicalAddress,
                     result.reportAddress,
                     result.landmarkName,

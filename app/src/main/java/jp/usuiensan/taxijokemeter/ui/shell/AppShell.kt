@@ -2,6 +2,7 @@ package jp.usuiensan.taxijokemeter.ui.shell
 
 import android.app.Activity
 import android.Manifest
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -150,8 +151,7 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
             Button(onClick = onBack) { Text("戻る") }
             Button(onClick = {
                 try {
-                    FareRuleStore(context).save(FareRule(initialDistance.toLong(), initialFare.toLong(), distanceIncrement.toLong(), incrementFare.toLong(), lowSpeedLimit.toInt(), lowSpeedSeconds.toInt()))
-                    TripChargeSettingsStore(context).save(TripChargeSettings(pickupFee.toLong(), reservationFee.toLong()))
+                    saveFareSettings(context, initialDistance, initialFare, distanceIncrement, incrementFare, lowSpeedLimit, lowSpeedSeconds, pickupFee, reservationFee)
                     error = null
                     onBack()
                 } catch (_: NumberFormatException) {
@@ -162,6 +162,23 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
             }) { Text("保存") }
         }
     }
+}
+
+internal fun saveFareSettings(
+    context: Context,
+    initialDistance: String,
+    initialFare: String,
+    distanceIncrement: String,
+    incrementFare: String,
+    lowSpeedLimit: String,
+    lowSpeedSeconds: String,
+    pickupFee: String,
+    reservationFee: String,
+) {
+    val rule = FareRule(initialDistance.toLong(), initialFare.toLong(), distanceIncrement.toLong(), incrementFare.toLong(), lowSpeedLimit.toInt(), lowSpeedSeconds.toInt())
+    val charges = TripChargeSettings(pickupFee.toLong(), reservationFee.toLong())
+    FareRuleStore(context).save(rule)
+    TripChargeSettingsStore(context).save(charges)
 }
 
 @Composable

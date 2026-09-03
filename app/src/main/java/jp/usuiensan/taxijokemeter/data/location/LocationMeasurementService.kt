@@ -37,10 +37,13 @@ import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSignal
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
+import jp.usuiensan.taxijokemeter.data.meter.toMeterRuntimeState
 import jp.usuiensan.taxijokemeter.data.meter.safetyWarningText
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
 import jp.usuiensan.taxijokemeter.domain.fare.FareCalculator
+import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
+import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -224,12 +227,15 @@ class LocationMeasurementService : Service() {
     private fun finishRestAutomatically(restId: String, restDistance: Double) {
         if (runtimeState.sampleState.occupancyState != OccupancyState.REST || MeterRuntimeStore.snapshot.value.restIntervalId != restId) return
         runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.EMPTY)
-        MeterRuntimeStore.update { current -> current.copy(
-            meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY,
-            menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU,
-            restIntervalId = null,
-            restDistanceMeters = restDistance.toLong(),
-        ) }
+        MeterRuntimeStore.update { current ->
+            val after = MeterStateMachine(current.toMeterRuntimeState()).dispatch(MeterAction.REST_RELEASE)
+            current.copy(
+                meterState = after.meterState,
+                menu = after.menu,
+                restIntervalId = null,
+                restDistanceMeters = restDistance.toLong(),
+            )
+        }
     }
 
     private fun ensureFareMeasurementInitialized(): FareMeasurementSession? {

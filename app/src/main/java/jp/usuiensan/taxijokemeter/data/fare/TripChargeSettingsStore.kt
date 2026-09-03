@@ -5,7 +5,11 @@ import android.content.Context
 data class TripChargeSettings(
     val pickupFeeYen: Long = 0,
     val reservationFeeYen: Long = 0,
-)
+) {
+    init {
+        require(pickupFeeYen >= 0 && reservationFeeYen >= 0)
+    }
+}
 
 class TripChargeSettingsStore(context: Context, name: String = PREFERENCES_NAME) {
     private val preferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)

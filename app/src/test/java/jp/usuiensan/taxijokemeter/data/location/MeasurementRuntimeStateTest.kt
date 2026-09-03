@@ -37,6 +37,18 @@ class MeasurementRuntimeStateTest {
         assertTrue(accumulated.restDistanceMeters in 0.8..1.0)
     }
 
+    @Test fun reenteringRestWithoutAnInterveningFixStartsANewSegment() {
+        val previousRest = MeasurementRuntimeState(DrivingSampleState("duty-1", RoadMode.GENERAL, OccupancyState.REST))
+            .advance(sample(35.0))
+
+        val reenteredRest = previousRest
+            .updateState(RoadMode.GENERAL, OccupancyState.EMPTY)
+            .updateState(RoadMode.GENERAL, OccupancyState.REST)
+            .advance(sample(35.01))
+
+        assertEquals(0.0, reenteredRest.restDistanceMeters, 0.0)
+    }
+
     private fun sample(latitude: Double) = DrivingSample(
         dutySessionId = "duty-1", timestamp = Instant.EPOCH, latitude = latitude, longitude = 139.0,
         accuracyMeters = 5.0, speedMps = 0.0, bearingDegrees = null, roadMode = RoadMode.GENERAL,

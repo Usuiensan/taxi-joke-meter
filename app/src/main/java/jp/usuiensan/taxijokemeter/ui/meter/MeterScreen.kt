@@ -123,7 +123,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(
-                Triple("空車", MeterRed, if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.EMPTY) } }),
+                Triple("空車", MeterRed, if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(emptyButtonAction(runtime.meterState)) } }),
                 Triple("実車", Color(0xFF2C9ED9), if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.OCCUPIED) } }),
                 Triple("支払", MeterWhite, if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.PAYMENT) } }),
                 Triple("合計", MeterWhite, if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.TOTAL) } }),
@@ -299,6 +299,8 @@ internal fun stateLabel(state: MeterState) = when (state) {
     MeterState.TOTAL -> "合計"
     MeterState.DEADHEAD -> "回送"
 }
+
+internal fun emptyButtonAction(state: MeterState) = if (state == MeterState.EMPTY) MeterAction.MENU else MeterAction.EMPTY
 
 internal fun showsDateTime(state: MeterState, beforeDeparture: Boolean) =
     beforeDeparture || state == MeterState.EMPTY || state == MeterState.DEADHEAD

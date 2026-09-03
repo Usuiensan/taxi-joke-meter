@@ -51,6 +51,11 @@ class MeterPresentationTest {
         assertEquals("回送", stateLabel(MeterState.DEADHEAD))
     }
 
+    @Test fun emptyButtonOpensMenuOnlyWhenAlreadyEmpty() {
+        assertEquals(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.MENU, emptyButtonAction(MeterState.EMPTY))
+        assertEquals(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.EMPTY, emptyButtonAction(MeterState.TOTAL))
+    }
+
     @Test fun emptyAndDeadheadUseTheirFixedSoftKeySlots() {
         assertEquals(listOf("累計", "運賃制", "高速"), softKeyLabels(MeterState.EMPTY))
         assertEquals(listOf("解除"), softKeyLabels(MeterState.DEADHEAD))

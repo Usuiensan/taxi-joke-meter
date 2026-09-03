@@ -6,6 +6,7 @@ import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
 import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
+import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import jp.usuiensan.taxijokemeter.domain.model.DutyEvent
@@ -32,6 +33,8 @@ class MeterController(private val context: Context) {
         if (action == MeterAction.DEPART && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         val before = machine.state
         if (action == MeterAction.PAYMENT && !shouldProcessPayment(before.meterState)) return
+        if (action == MeterAction.TOTAL && !shouldFinalizePayment(before.meterState)) return
+        if (action == MeterAction.EMPTY && before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) return
         val after = machine.dispatch(action)
         when (action) {
             MeterAction.DEPART -> {
@@ -42,17 +45,29 @@ class MeterController(private val context: Context) {
                 event(DutyEventType.DEPARTURE)
             }
             MeterAction.OCCUPIED -> {
-                if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) {
+                if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY || before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.TOTAL) {
                     val now = Instant.now()
                     trip = Trip(UUID.randomUUID().toString(), now, null, null, null, 0, 0, 0, 0, jp.usuiensan.taxijokemeter.domain.model.PaymentMethod.UNKNOWN, null)
-                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, tripStartedAt = now, fareYen = fareRule.initialFareYen) }
+                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) }
                     measurement.beginFareMeasurement(); event(DutyEventType.PICKUP)
+                } else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) {
+                    MeterRuntimeStore.update { it.copy(meterState = after.meterState) }
+                    measurement.updateState(before.roadMode, OccupancyState.OCCUPIED)
                 }
             }
-            MeterAction.PAYMENT -> { measurement.endFareMeasurement(); MeterRuntimeStore.update { it.copy(meterState = after.meterState) }; event(DutyEventType.DROPOFF) }
+            MeterAction.PAYMENT -> {
+                MeterRuntimeStore.update { it.copy(meterState = after.meterState) }
+                measurement.updateState(before.roadMode, OccupancyState.EMPTY)
+            }
+            MeterAction.TOTAL -> {
+                measurement.endFareMeasurement()
+                MeterRuntimeStore.update { it.copy(meterState = after.meterState) }
+                event(DutyEventType.DROPOFF)
+                finishTrip(TripStatus.COMPLETED, true)
+            }
             MeterAction.EMPTY -> {
                 if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) finishTrip(TripStatus.VOIDED, false)
-                else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) finishTrip(TripStatus.COMPLETED, true)
+                if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) measurement.endFareMeasurement()
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.fareYen, chargeableDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.lowSpeedSeconds, chargeProgress = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) null else it.chargeProgress, tripStartedAt = null) }
             }
             MeterAction.DEADHEAD -> { MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }; event(DutyEventType.DEADHEAD_START) }
@@ -63,7 +78,12 @@ class MeterController(private val context: Context) {
         }
     }
 
-    fun setRoadMode(mode: RoadMode) { machine.setRoadMode(mode); MeterRuntimeStore.update { it.copy(roadMode = mode) }; measurement.updateState(mode, jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY) }
+    fun setRoadMode(mode: RoadMode) {
+        machine.setRoadMode(mode)
+        MeterRuntimeStore.update { it.copy(roadMode = mode) }
+        val occupancy = if (machine.state.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) OccupancyState.OCCUPIED else OccupancyState.EMPTY
+        measurement.updateState(mode, occupancy)
+    }
 
     private fun finishTrip(status: TripStatus, revenueIncluded: Boolean) {
         val current = trip ?: return
@@ -82,3 +102,6 @@ class MeterController(private val context: Context) {
 
 internal fun shouldProcessPayment(state: jp.usuiensan.taxijokemeter.domain.meter.MeterState) =
     state == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED
+
+internal fun shouldFinalizePayment(state: jp.usuiensan.taxijokemeter.domain.meter.MeterState) =
+    state == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT

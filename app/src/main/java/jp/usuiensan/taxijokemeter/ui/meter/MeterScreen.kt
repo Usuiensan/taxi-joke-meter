@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
@@ -87,7 +88,11 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MeterButton("合計", MeterBlue, Modifier.fillMaxWidth())
+            if (runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL) {
+                MeterStateLabel(paymentSummaryTitle(runtime.meterState))
+            } else {
+                MeterButton("合計", MeterBlue, Modifier.fillMaxWidth())
+            }
             Spacer(Modifier.weight(1f))
         }
 
@@ -101,7 +106,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
             MeterButton("空車", MeterRed, Modifier.fillMaxWidth(), onClick = { controller.dispatch(MeterAction.EMPTY) })
             MeterButton("実車", Color(0xFF2C9ED9), Modifier.fillMaxWidth(), onClick = { controller.dispatch(MeterAction.OCCUPIED) })
             MeterButton("支払", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.PAYMENT) })
-            MeterButton("合計", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023))
+            MeterButton("合計", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.TOTAL) })
         }
     }
 }
@@ -125,12 +130,8 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                     Text("メニュー", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.MENU) })
                     Text("入庫", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.ARRIVE) })
                 }
-            } else if (runtime.meterState == MeterState.PAYMENT) {
-                Column(Modifier.fillMaxWidth()) {
-                    MeterRow("合計", "${runtime.fareYen.formatYen()}円", 22.sp)
-                    MeterRow("運賃料金計", "${runtime.fareYen.formatYen()}円", 22.sp)
-                    MeterRow("通行料他", "0円", 22.sp)
-                }
+            } else if (runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL) {
+                PaymentSummaryPanel(runtime)
             } else if (runtime.meterState == MeterState.OCCUPIED) {
                 Column(Modifier.fillMaxWidth()) {
                     Text("実車", color = MeterWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -195,15 +196,59 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
 }
 
 @Composable
-private fun MeterRow(label: String, value: String, valueSize: androidx.compose.ui.unit.TextUnit = 32.sp) {
+private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
+    Column(Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(108.dp).background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    0.0f to MeterBlack,
+                    0.68f to MeterBlack,
+                    1.0f to Color(0xFF075A9C),
+                ),
+            ),
+        ) {
+            Text("合計", color = MeterWhite, fontSize = 20.sp, modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 10.dp))
+            val fare = formatFareAmount(runtime.fareYen)
+            Row(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Text(
+                    fare.number,
+                    color = MeterWhite,
+                    style = TextStyle(fontSize = 68.sp, lineHeight = 74.sp, fontWeight = FontWeight.Light, platformStyle = PlatformTextStyle(includeFontPadding = true)),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                )
+                Text(
+                    fare.unit,
+                    color = MeterWhite,
+                    style = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, platformStyle = PlatformTextStyle(includeFontPadding = true)),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+        paymentSummaryRows(runtime.fareYen).forEach { (label, value) -> PaymentDetailRow(label, value) }
+    }
+}
+
+@Composable
+private fun PaymentDetailRow(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth().background(Color(0xFF4D5C64)).padding(horizontal = 8.dp, vertical = 0.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = MeterWhite, fontSize = 18.sp)
-        Text(value, color = MeterWhite, fontSize = valueSize, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+        Text(value, color = MeterWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
     }
+}
+
+@Composable
+private fun MeterStateLabel(text: String) {
+    Text(text, color = MeterWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
 }
 
 @Composable
@@ -257,16 +302,27 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot) {
     val labels = softKeyLabels(runtime.meterState)
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         labels.forEachIndexed { index, label ->
-            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023))
+            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = if (runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL) ({}) else null)
         }
     }
 }
 
 internal fun softKeyLabels(state: MeterState) = when (state) {
     MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地")
-    MeterState.PAYMENT -> listOf("明細", "置換", "立替", "チケット", "定額")
+    MeterState.PAYMENT, MeterState.TOTAL -> listOf("明細", "置換", "立替", "チケット", "定額")
     else -> emptyList()
 }
+
+internal fun paymentSummaryTitle(state: MeterState) = when (state) {
+    MeterState.PAYMENT -> "支払"
+    MeterState.TOTAL -> "合計"
+    else -> ""
+}
+
+internal fun paymentSummaryRows(fareYen: Long) = listOf(
+    "運賃料金計" to "${fareYen.formatYen()}円",
+    "通行料他" to "0円",
+)
 
 internal fun showsChargeProgressRail(state: MeterState) = state == MeterState.OCCUPIED
 

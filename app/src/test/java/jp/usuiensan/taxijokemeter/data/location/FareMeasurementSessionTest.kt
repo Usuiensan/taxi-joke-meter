@@ -42,6 +42,38 @@ class FareMeasurementSessionTest {
         assertEquals(null, session.end())
     }
 
+    @Test fun paymentLowSpeedAddsDistanceWithoutLowSpeedTime() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.OCCUPIED)
+        session.add(sample(0.001, 1, speedMps = 1.0, occupancyState = OccupancyState.OCCUPIED))
+        session.setOccupancyState(OccupancyState.EMPTY)
+
+        session.add(sample(0.002, 2, speedMps = 1.0, occupancyState = OccupancyState.EMPTY))
+        val result = session.add(sample(0.003, 3, speedMps = 1.0, occupancyState = OccupancyState.EMPTY))
+
+        assertEquals(91L, result!!.chargeableDistanceMeters)
+        assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test fun changingOccupancyCutsTheSegmentAnchor() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.OCCUPIED)
+        session.add(sample(0.001, 1, occupancyState = OccupancyState.OCCUPIED))
+        session.setOccupancyState(OccupancyState.EMPTY)
+
+        assertEquals(null, session.add(sample(0.002, 2, occupancyState = OccupancyState.EMPTY)))
+    }
+
+    @Test fun resumingOccupancyCutsThePaymentAnchor() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.OCCUPIED)
+        session.setOccupancyState(OccupancyState.EMPTY)
+        session.add(sample(0.001, 1, occupancyState = OccupancyState.EMPTY))
+        session.setOccupancyState(OccupancyState.OCCUPIED)
+
+        assertEquals(null, session.add(sample(0.002, 2, occupancyState = OccupancyState.OCCUPIED)))
+    }
+
     @Test fun invalidSampleDoesNotBecomeFareAnchor() {
         val session = FareMeasurementSession(rule)
         session.begin()
@@ -65,10 +97,16 @@ class FareMeasurementSessionTest {
         }
     }
 
-    private fun sample(longitude: Double, second: Long, quality: MeasurementQuality = MeasurementQuality.VALID) = DrivingSample(
+    private fun sample(
+        longitude: Double,
+        second: Long,
+        quality: MeasurementQuality = MeasurementQuality.VALID,
+        speedMps: Double? = 10.0,
+        occupancyState: OccupancyState = OccupancyState.EMPTY,
+    ) = DrivingSample(
         dutySessionId = "duty-1", timestamp = Instant.ofEpochSecond(second), latitude = 35.0,
-        longitude = longitude, accuracyMeters = 5.0, speedMps = 10.0, bearingDegrees = null,
-        roadMode = RoadMode.GENERAL, occupancyState = OccupancyState.EMPTY,
+        longitude = longitude, accuracyMeters = 5.0, speedMps = speedMps, bearingDegrees = null,
+        roadMode = RoadMode.GENERAL, occupancyState = occupancyState,
         measurementQuality = quality, elapsedRealtimeNanos = second * 1_000_000_000L,
         speedSource = SpeedSource.REPORTED,
     )

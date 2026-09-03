@@ -29,4 +29,11 @@ class MeterPresentationTest {
     fun paymentShowsPaymentSoftKeys() {
         assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeyLabels(MeterState.PAYMENT))
     }
+
+    @Test fun totalShowsPaymentSoftKeysAndSummaryTitle() {
+        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeyLabels(MeterState.TOTAL))
+        assertEquals("支払", paymentSummaryTitle(MeterState.PAYMENT))
+        assertEquals("合計", paymentSummaryTitle(MeterState.TOTAL))
+        assertEquals(listOf("運賃料金計" to "2,700円", "通行料他" to "0円"), paymentSummaryRows(2_700))
+    }
 }

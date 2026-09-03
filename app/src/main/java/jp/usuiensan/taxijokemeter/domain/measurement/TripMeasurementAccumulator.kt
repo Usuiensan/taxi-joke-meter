@@ -18,14 +18,16 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
     private var distanceMeters = 0.0
     private var lowSpeedDuration = Duration.ZERO
 
-    fun add(previous: DrivingSample, current: DrivingSample): MeasurementAccumulation {
+    fun add(previous: DrivingSample, current: DrivingSample, distanceOnly: Boolean = false): MeasurementAccumulation {
         if (previous.isValid && current.isValid) {
             val elapsed = elapsedBetween(previous, current)
             val distance = haversineMeters(previous, current)
             val speedMps = current.speedMps ?: monotonicElapsed(previous, current)
                 ?.takeIf { it > Duration.ZERO }
                 ?.let { distance / it.toNanos() * 1_000_000_000.0 }
-            if (elapsed != null && !elapsed.isZero && speedMps != null && speedMps * 3.6 < fareRule.lowSpeedLimitKmh) {
+            if (distanceOnly && elapsed != null && !elapsed.isZero && speedMps != null) {
+                distanceMeters += distance
+            } else if (elapsed != null && !elapsed.isZero && speedMps != null && speedMps * 3.6 < fareRule.lowSpeedLimitKmh) {
                 lowSpeedDuration = lowSpeedDuration.plus(elapsed)
             } else if (elapsed != null && !elapsed.isZero && speedMps != null) {
                 distanceMeters += distance

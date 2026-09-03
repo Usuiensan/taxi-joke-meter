@@ -15,4 +15,11 @@ class MeterControllerPaymentTest {
     fun occupiedPaymentRunsFareEndAndDropoff() {
         assertTrue(shouldProcessPayment(MeterState.OCCUPIED))
     }
+
+    @Test
+    fun onlyPaymentCanFinalizeToTotal() {
+        assertTrue(shouldFinalizePayment(MeterState.PAYMENT))
+        assertFalse(shouldFinalizePayment(MeterState.OCCUPIED))
+        assertFalse(shouldFinalizePayment(MeterState.EMPTY))
+    }
 }

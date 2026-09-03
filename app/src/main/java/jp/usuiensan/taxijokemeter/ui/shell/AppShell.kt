@@ -98,11 +98,11 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
         Text("RoadMode: ${runtime.roadMode}")
         if (isLandscape) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                RoadMode.entries.forEach { mode -> Button(enabled = runtime.dutyLifecycle == jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, onClick = { controller.updateState(mode, OccupancyState.EMPTY) }) { Text(mode.name, maxLines = 1, softWrap = false) } }
+                RoadMode.entries.forEach { mode -> Button(enabled = runtime.dutyLifecycle == jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, onClick = { controller.updateState(mode, if (runtime.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) OccupancyState.OCCUPIED else OccupancyState.EMPTY) }) { Text(mode.name, maxLines = 1, softWrap = false) } }
             }
         } else {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                RoadMode.entries.forEach { mode -> Button(enabled = runtime.dutyLifecycle == jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, onClick = { controller.updateState(mode, OccupancyState.EMPTY) }) { Text(mode.name, maxLines = 1, softWrap = false) } }
+                RoadMode.entries.forEach { mode -> Button(enabled = runtime.dutyLifecycle == jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, onClick = { controller.updateState(mode, if (runtime.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) OccupancyState.OCCUPIED else OccupancyState.EMPTY) }) { Text(mode.name, maxLines = 1, softWrap = false) } }
             }
         }
         Button(onClick = showMeter) { Text("メーター表示") }

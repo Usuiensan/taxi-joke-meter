@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MeterStateMachineTest {
-    @Test fun lifecycleAndTripTransitionsAreIndependent() {
+    @Test fun paymentCanResumeOrFinalizeButCannotBecomeEmpty() {
         val machine = MeterStateMachine()
         assertEquals(DutyLifecycle.BEFORE_DEPARTURE, machine.state.dutyLifecycle)
         machine.dispatch(MeterAction.DEPART)
@@ -14,6 +14,30 @@ class MeterStateMachineTest {
         assertEquals(MeterState.OCCUPIED, machine.state.meterState)
         machine.dispatch(MeterAction.PAYMENT)
         assertEquals(MeterState.PAYMENT, machine.state.meterState)
+        machine.dispatch(MeterAction.EMPTY)
+        assertEquals(MeterState.PAYMENT, machine.state.meterState)
+        machine.dispatch(MeterAction.OCCUPIED)
+        assertEquals(MeterState.OCCUPIED, machine.state.meterState)
+        machine.dispatch(MeterAction.PAYMENT)
+        machine.dispatch(MeterAction.TOTAL)
+        assertEquals(MeterState.TOTAL, machine.state.meterState)
+    }
+
+    @Test fun totalCanBecomeEmptyOrStartANewTrip() {
+        val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE, MeterState.TOTAL))
+
+        machine.dispatch(MeterAction.OCCUPIED)
+        assertEquals(MeterState.OCCUPIED, machine.state.meterState)
+        machine.dispatch(MeterAction.PAYMENT)
+        assertEquals(MeterState.PAYMENT, machine.state.meterState)
+        machine.dispatch(MeterAction.TOTAL)
+        machine.dispatch(MeterAction.EMPTY)
+        assertEquals(MeterState.EMPTY, machine.state.meterState)
+    }
+
+    @Test fun occupiedCancellationStillReturnsToEmpty() {
+        val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE, MeterState.OCCUPIED))
+
         machine.dispatch(MeterAction.EMPTY)
         assertEquals(MeterState.EMPTY, machine.state.meterState)
     }

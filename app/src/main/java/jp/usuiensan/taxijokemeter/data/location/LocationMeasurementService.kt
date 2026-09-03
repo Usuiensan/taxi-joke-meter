@@ -133,10 +133,12 @@ class LocationMeasurementService : Service() {
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: runtimeState.sampleState.roadMode.name),
                 OccupancyState.valueOf(intent.getStringExtra(EXTRA_OCCUPANCY_STATE) ?: runtimeState.sampleState.occupancyState.name),
             )
+            fareMeasurement.setOccupancyState(runtimeState.sampleState.occupancyState)
             MeasurementDebugStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode.name) }
             MeterRuntimeStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode) }
         } else if (intent?.action == ACTION_BEGIN_FARE) {
-            fareMeasurement.begin()
+            runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.OCCUPIED)
+            fareMeasurement.begin(OccupancyState.OCCUPIED)
             MeterRuntimeStore.update { it.copy(meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) }
             Log.i(TAG, "料金計測=開始")
         } else if (intent?.action == ACTION_END_FARE) {

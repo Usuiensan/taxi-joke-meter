@@ -3,9 +3,9 @@ package jp.usuiensan.taxijokemeter.domain.meter
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 
 enum class DutyLifecycle { BEFORE_DEPARTURE, ACTIVE, ENDED }
-enum class MeterState { EMPTY, OCCUPIED, PAYMENT, DEADHEAD }
+enum class MeterState { EMPTY, OCCUPIED, PAYMENT, TOTAL, DEADHEAD }
 enum class DutyActivity { WORKING, BREAK }
-enum class MeterAction { DEPART, EMPTY, OCCUPIED, PAYMENT, DEADHEAD, BREAK, RESUME, ARRIVE, MENU, BACK }
+enum class MeterAction { DEPART, EMPTY, OCCUPIED, PAYMENT, TOTAL, DEADHEAD, BREAK, RESUME, ARRIVE, MENU, BACK }
 enum class MeterMenu { NONE, EMPTY_MENU }
 
 data class MeterRuntimeState(
@@ -25,12 +25,18 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
             MeterAction.DEPART -> state.copy(dutyLifecycle = DutyLifecycle.ACTIVE, meterState = MeterState.EMPTY, menu = MeterMenu.NONE)
             MeterAction.EMPTY -> when (state.meterState) {
                 MeterState.EMPTY -> state.copy(menu = MeterMenu.EMPTY_MENU)
-                MeterState.OCCUPIED, MeterState.PAYMENT -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.NONE)
+                MeterState.OCCUPIED, MeterState.TOTAL -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.NONE)
+                MeterState.PAYMENT -> state
                 MeterState.DEADHEAD -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.NONE)
             }
             MeterAction.OCCUPIED -> state.copy(meterState = MeterState.OCCUPIED, menu = MeterMenu.NONE)
             MeterAction.PAYMENT -> if (state.meterState == MeterState.OCCUPIED) {
                 state.copy(meterState = MeterState.PAYMENT, menu = MeterMenu.NONE)
+            } else {
+                state
+            }
+            MeterAction.TOTAL -> if (state.meterState == MeterState.PAYMENT) {
+                state.copy(meterState = MeterState.TOTAL, menu = MeterMenu.NONE)
             } else {
                 state
             }

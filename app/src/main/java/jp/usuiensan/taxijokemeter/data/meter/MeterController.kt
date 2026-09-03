@@ -36,7 +36,7 @@ class MeterController(private val context: Context) {
     fun ensureMeasurementRunning() {
         if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         fareRule = FareRuleStore(context).load()
-        measurement.ensureMeasurementRunning(fareRule)
+        sessionId = measurement.ensureMeasurementRunning(fareRule)
     }
 
     fun dispatch(action: MeterAction) {
@@ -50,7 +50,7 @@ class MeterController(private val context: Context) {
         when (action) {
             MeterAction.DEPART -> {
                 fareRule = FareRuleStore(context).load()
-                val id = measurement.start(after.roadMode, jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY, fareRule)
+                val id = measurement.ensureMeasurementRunning(fareRule) ?: return
                 sessionId = id
                 MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, meterState = after.meterState, menu = after.menu, dutySessionId = id) }
                 event(DutyEventType.DEPARTURE)

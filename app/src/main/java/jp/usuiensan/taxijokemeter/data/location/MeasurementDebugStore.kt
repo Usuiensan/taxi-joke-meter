@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class MeasurementDebugSnapshot(
     val running: Boolean = false,
+    val sessionId: String? = null,
     val health: LocationHealth = LocationHealth.UNAVAILABLE,
     val latestAccuracyMeters: Double? = null,
     val latestSpeedMps: Double? = null,

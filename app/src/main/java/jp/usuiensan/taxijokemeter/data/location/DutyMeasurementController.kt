@@ -19,14 +19,22 @@ import java.util.UUID
 class DutyMeasurementController(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var startRequested = false
+    private var sessionId: String? = null
 
-    fun ensureMeasurementRunning(fareRule: FareRule) {
-        if (MeasurementDebugStore.snapshot.value.running || startRequested) return
+    @Synchronized
+    fun ensureMeasurementRunning(fareRule: FareRule): String? {
+        sessionId = resolveMeasurementSessionId(sessionId, MeasurementDebugStore.snapshot.value)
+        if (sessionId != null) return sessionId
         startRequested = true
-        start(RoadMode.GENERAL, OccupancyState.EMPTY, fareRule)
+        sessionId = UUID.randomUUID().toString()
+        MeasurementDebugStore.update { it.copy(sessionId = sessionId) }
+        start(RoadMode.GENERAL, OccupancyState.EMPTY, fareRule, sessionId!!)
+        return sessionId
     }
 
     fun start(roadMode: RoadMode, occupancyState: OccupancyState, fareRule: FareRule, sessionId: String = UUID.randomUUID().toString()): String {
+        this.sessionId = sessionId
+        MeasurementDebugStore.update { it.copy(sessionId = sessionId) }
         val database = DutyDatabase.build(context)
         scope.launch {
             DutyRecordRepository(database).save(DutySession(sessionId, Instant.now(), null))
@@ -67,6 +75,9 @@ class DutyMeasurementController(private val context: Context) {
         context.startService(Intent(context, LocationMeasurementService::class.java).setAction(action))
     }
 }
+
+internal fun resolveMeasurementSessionId(localSessionId: String?, snapshot: MeasurementDebugSnapshot): String? =
+    localSessionId ?: snapshot.sessionId
 
 internal fun Intent.putFareRuleExtras(fareRule: FareRule): Intent = apply {
     putExtra(LocationMeasurementService.EXTRA_INITIAL_DISTANCE_METERS, fareRule.initialDistanceMeters)

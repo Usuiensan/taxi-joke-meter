@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeSnapshot
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
@@ -157,26 +158,39 @@ private fun MeterRow(label: String, value: String, valueSize: androidx.compose.u
 
 @Composable
 private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
-    BoxWithConstraints(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.CenterStart) {
-        val iconSize = 34.dp
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().height(56.dp).background(MeterBlack),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val iconSize = 46.dp
+        val iconBodySize = 32.dp
         val travel = (maxWidth - iconSize).coerceAtLeast(0.dp)
         val iconOffset = travel * fraction.coerceIn(0f, 1f)
-        Canvas(Modifier.fillMaxWidth().height(20.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(28.dp)) {
             val y = size.height / 2
-            val railColor = if (mode == ChargeProgressMode.TIME) Color(0xFF2A9FD6) else Color(0xFF57B957)
-            drawLine(railColor, Offset(0f, y), Offset(size.width * fraction.coerceIn(0f, 1f), y), strokeWidth = 8f)
-            drawLine(MeterWhite, Offset(size.width * fraction.coerceIn(0f, 1f), y), Offset(size.width, y), strokeWidth = 8f)
+            val progressColor = if (mode == ChargeProgressMode.TIME) Color(0xFF2A9FD6) else Color(0xFF57B957)
+            val radius = 14f
+            drawRoundRect(MeterWhite, topLeft = Offset(0f, y - radius), size = androidx.compose.ui.geometry.Size(size.width, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
+            drawRoundRect(progressColor, topLeft = Offset(0f, y - radius), size = androidx.compose.ui.geometry.Size(size.width * fraction.coerceIn(0f, 1f), radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
             repeat(11) { index ->
                 val x = size.width * index / 10f
-                drawLine(Color(0xFF647078), Offset(x, y - 8f), Offset(x, y + 8f), strokeWidth = 1f)
+                drawLine(Color(0xFF647078), Offset(x, y - 8f), Offset(x, y + 8f), strokeWidth = 2f)
             }
         }
-        androidx.compose.foundation.Image(
-            painter = painterResource(if (mode == ChargeProgressMode.TIME) jp.usuiensan.taxijokemeter.R.drawable.charge_time_clock else jp.usuiensan.taxijokemeter.R.drawable.charge_distance_wheel),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.requiredSize(iconSize).graphicsLayer { translationX = iconOffset.toPx() },
-        )
+        Box(
+            Modifier.requiredSize(iconSize)
+                .graphicsLayer { translationX = iconOffset.toPx() }
+                .background(if (mode == ChargeProgressMode.TIME) Color(0xFFE59A6C) else Color(0xFF67C94A), CircleShape)
+                .border(2.dp, MeterBlack, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.foundation.Image(
+                painter = painterResource(if (mode == ChargeProgressMode.TIME) jp.usuiensan.taxijokemeter.R.drawable.charge_time_clock else jp.usuiensan.taxijokemeter.R.drawable.charge_distance_wheel),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.requiredSize(iconBodySize),
+            )
+        }
     }
 }
 

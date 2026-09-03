@@ -24,6 +24,7 @@ data class MeterRuntimeSnapshot(
     val roadMode: RoadMode = RoadMode.GENERAL,
     val fareYen: Long = 0,
     val chargeableDistanceMeters: Long = 0,
+    val actualDistanceMeters: Long = 0,
     val lowSpeedSeconds: Long = 0,
     val gpsHealth: LocationHealth = LocationHealth.UNAVAILABLE,
     val latestSpeedMps: Double? = null,
@@ -32,6 +33,8 @@ data class MeterRuntimeSnapshot(
     val menu: MeterMenu = MeterMenu.EMPTY_MENU,
     val dutySessionId: String? = null,
     val tripStartedAt: java.time.Instant? = null,
+    val currentTripId: String? = null,
+    val currentTripNumber: Int? = null,
     val chargeProgress: ChargeProgressUiState? = null,
     val safetyWarning: SafetyWarning? = null,
 )
@@ -57,7 +60,7 @@ object MeterRuntimeStore {
     val snapshot: StateFlow<MeterRuntimeSnapshot> = _snapshot.asStateFlow()
     private val warningScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     fun update(transform: (MeterRuntimeSnapshot) -> MeterRuntimeSnapshot) { _snapshot.value = transform(_snapshot.value) }
-    fun resetMeter() { update { it.copy(fareYen = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) } }
+    fun resetMeter() { update { it.copy(fareYen = 0, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) } }
 
     fun showSafetyWarning(text: String, nowElapsedRealtimeMillis: Long) {
         val warning = SafetyWarning(UUID.randomUUID().toString(), snapshot.value.meterState, nowElapsedRealtimeMillis, nowElapsedRealtimeMillis + 3_000L, text)

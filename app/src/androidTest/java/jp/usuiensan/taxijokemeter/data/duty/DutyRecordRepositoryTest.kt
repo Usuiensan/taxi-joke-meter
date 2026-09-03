@@ -95,4 +95,20 @@ class DutyRecordRepositoryTest {
         assertEquals(TripStatus.ACTIVE, repository.findTrip(first.id)!!.status)
         assertEquals(rule.initialDistanceMeters, first.fareInitialDistanceMeters)
     }
+
+    @Test fun completedAndVoidedTripsRemainPersistedAndConsumeNumbers() = runBlocking {
+        val rule = FareRule(1_000, 500, 200, 100, 10, 75)
+        repository.save(DutySession("duty-1", Instant.EPOCH, null))
+        val completed = repository.startTrip("duty-1", Instant.parse("2026-09-03T01:00:00Z"), rule)
+        repository.finishTrip(completed.copy(dropoffAt = completed.pickupAt.plusSeconds(60), actualDistanceMeters = 50, chargeableDistanceMeters = 0, lowSpeedSeconds = 60, meteredFareYen = 500, totalFareYen = 500), TripStatus.COMPLETED, true)
+        val voided = repository.startTrip("duty-1", Instant.parse("2026-09-03T02:00:00Z"), rule)
+        repository.finishTrip(voided.copy(dropoffAt = voided.pickupAt.plusSeconds(30)), TripStatus.VOIDED, false)
+        val next = repository.startTrip("duty-1", Instant.parse("2026-09-03T03:00:00Z"), rule)
+
+        assertEquals(TripStatus.COMPLETED, repository.findTrip(completed.id)!!.status)
+        assertEquals(50L, repository.findTrip(completed.id)!!.actualDistanceMeters)
+        assertEquals(TripStatus.VOIDED, repository.findTrip(voided.id)!!.status)
+        assertEquals(2, voided.tripNumber)
+        assertEquals(3, next.tripNumber)
+    }
 }

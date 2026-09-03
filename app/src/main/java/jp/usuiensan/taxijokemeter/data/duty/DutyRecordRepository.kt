@@ -63,11 +63,14 @@ class DutyRecordRepository(private val database: DutyDatabase) {
     suspend fun findTrip(id: String): Trip? = database.dutyDao().findTrip(id)?.toDomain()
 
     suspend fun updateTripMeasurement(id: String, actualDistanceMeters: Long, chargeableDistanceMeters: Long, lowSpeedSeconds: Long, meteredFareYen: Long) {
-        database.dutyDao().updateTrip(id, null, TripStatus.ACTIVE.name, lowSpeedSeconds, false, actualDistanceMeters, chargeableDistanceMeters, meteredFareYen, meteredFareYen)
+        database.dutyDao().updateTripMeasurement(id, actualDistanceMeters, chargeableDistanceMeters, lowSpeedSeconds, meteredFareYen, meteredFareYen)
     }
 
     suspend fun finishTrip(trip: Trip, status: TripStatus, revenueIncluded: Boolean) {
-        database.dutyDao().updateTrip(trip.id, trip.dropoffAt, status.name, trip.lowSpeedSeconds, revenueIncluded, trip.actualDistanceMeters, trip.chargeableDistanceMeters, trip.meteredFareYen, trip.totalFareYen)
+        database.withTransaction {
+            database.dutyDao().updateTripMeasurement(trip.id, trip.actualDistanceMeters, trip.chargeableDistanceMeters, trip.lowSpeedSeconds, trip.meteredFareYen, trip.totalFareYen)
+            database.dutyDao().finalizeTrip(trip.id, trip.dropoffAt, status.name, revenueIncluded)
+        }
     }
 }
 

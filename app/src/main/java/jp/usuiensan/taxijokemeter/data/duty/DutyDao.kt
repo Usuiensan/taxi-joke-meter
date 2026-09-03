@@ -21,6 +21,8 @@ interface DutyDao {
     @Query("UPDATE duty_sessions SET endedAt = :endedAt WHERE id = :id") suspend fun updateEndedAt(id: String, endedAt: Instant)
     @Query("SELECT MAX(tripNumber) FROM trips WHERE serviceDate = :serviceDate") suspend fun maxTripNumber(serviceDate: String): Int?
     @Query("SELECT * FROM trips WHERE id = :id") suspend fun findTrip(id: String): TripEntity?
-    @Query("UPDATE trips SET dropoffAt = :dropoffAt, status = :status, lowSpeedSeconds = :lowSpeedSeconds, revenueIncluded = :revenueIncluded, actualDistanceMeters = :actualDistanceMeters, chargeableDistanceMeters = :chargeableDistanceMeters, meteredFareYen = :meteredFareYen, totalFareYen = :totalFareYen WHERE id = :id")
-    suspend fun updateTrip(id: String, dropoffAt: Instant?, status: String, lowSpeedSeconds: Long, revenueIncluded: Boolean, actualDistanceMeters: Long, chargeableDistanceMeters: Long, meteredFareYen: Long, totalFareYen: Long)
+    @Query("UPDATE trips SET actualDistanceMeters = :actualDistanceMeters, chargeableDistanceMeters = :chargeableDistanceMeters, lowSpeedSeconds = :lowSpeedSeconds, meteredFareYen = :meteredFareYen, totalFareYen = :totalFareYen WHERE id = :id")
+    suspend fun updateTripMeasurement(id: String, actualDistanceMeters: Long, chargeableDistanceMeters: Long, lowSpeedSeconds: Long, meteredFareYen: Long, totalFareYen: Long)
+    @Query("UPDATE trips SET dropoffAt = :dropoffAt, status = :status, revenueIncluded = :revenueIncluded WHERE id = :id")
+    suspend fun finalizeTrip(id: String, dropoffAt: Instant?, status: String, revenueIncluded: Boolean)
 }

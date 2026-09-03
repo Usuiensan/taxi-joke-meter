@@ -37,6 +37,7 @@ class MeterController(private val context: Context) {
         if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         fareRule = FareRuleStore(context).load()
         sessionId = measurement.ensureMeasurementRunning(fareRule)
+        MeterRuntimeStore.update { it.copy(dutySessionId = sessionId) }
     }
 
     fun dispatch(action: MeterAction) {
@@ -59,9 +60,17 @@ class MeterController(private val context: Context) {
                 if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY || before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.TOTAL) {
                     fareRule = FareRuleStore(context).load()
                     val now = Instant.now()
-                    trip = Trip(UUID.randomUUID().toString(), now, null, null, null, 0, 0, 0, 0, jp.usuiensan.taxijokemeter.domain.model.PaymentMethod.UNKNOWN, null)
-                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = ChargeProgressMapper.initial(fareRule, it.latestSpeedMps)) }
-                    measurement.beginFareMeasurement(fareRule); event(DutyEventType.PICKUP)
+                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, currentTripId = null, currentTripNumber = null, chargeProgress = ChargeProgressMapper.initial(fareRule, it.latestSpeedMps)) }
+                    sessionId?.let { session -> scope.launch {
+                        val db = DutyDatabase.build(context)
+                        try {
+                            val started = DutyRecordRepository(db).startTrip(session, now, fareRule)
+                            trip = started
+                            MeterRuntimeStore.update { it.copy(currentTripId = started.id, currentTripNumber = started.tripNumber) }
+                            measurement.beginFareMeasurement(fareRule)
+                            event(DutyEventType.PICKUP)
+                        } finally { db.close() }
+                    } }
                 } else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) {
                     MeterRuntimeStore.update { it.copy(meterState = after.meterState) }
                     measurement.updateState(before.roadMode, OccupancyState.OCCUPIED)
@@ -80,7 +89,7 @@ class MeterController(private val context: Context) {
             MeterAction.EMPTY -> {
                 if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) finishTrip(TripStatus.VOIDED, false)
                 if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) measurement.endFareMeasurement()
-                MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.fareYen, chargeableDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.lowSpeedSeconds, chargeProgress = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) null else it.chargeProgress, tripStartedAt = null) }
+                MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.fareYen, actualDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.actualDistanceMeters, chargeableDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.lowSpeedSeconds, chargeProgress = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) null else it.chargeProgress, tripStartedAt = null, currentTripId = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) null else it.currentTripId, currentTripNumber = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) null else it.currentTripNumber) }
             }
             MeterAction.DEADHEAD -> { MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }; event(DutyEventType.DEADHEAD_START) }
             MeterAction.RELEASE -> { MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }; event(DutyEventType.DEADHEAD_END) }
@@ -102,9 +111,9 @@ class MeterController(private val context: Context) {
     private fun finishTrip(status: TripStatus, revenueIncluded: Boolean) {
         val current = trip ?: return
         val value = MeterRuntimeStore.snapshot.value
-        trip = current.copy(dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.fareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded)
+        trip = current.copy(dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.fareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded, actualDistanceMeters = value.actualDistanceMeters, chargeableDistanceMeters = value.chargeableDistanceMeters, meteredFareYen = value.fareYen, totalFareYen = value.fareYen)
         val session = sessionId ?: return
-        trip?.let { completed -> scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).appendTrip(session, completed) } finally { db.close() } } }
+        trip?.let { completed -> scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).finishTrip(completed, status, revenueIncluded) } finally { db.close() } } }
         trip = null
     }
 

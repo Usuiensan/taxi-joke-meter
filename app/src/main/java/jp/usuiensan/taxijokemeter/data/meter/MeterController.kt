@@ -13,8 +13,6 @@ import jp.usuiensan.taxijokemeter.domain.model.DutyEventType
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
-import jp.usuiensan.taxijokemeter.domain.road.RoadModeController
-import jp.usuiensan.taxijokemeter.domain.road.RoadModeAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -80,7 +78,6 @@ class MeterController(private val context: Context) {
 
     private fun endDuty() { val session = sessionId ?: return; scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }
 
-    fun shortRoadModePress() { setRoadMode(RoadModeController().transition(MeterRuntimeStore.snapshot.value.roadMode, RoadModeAction.SHORT_PRESS).nextMode) }
 }
 
 internal fun shouldProcessPayment(state: jp.usuiensan.taxijokemeter.domain.meter.MeterState) =

@@ -89,13 +89,12 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             MeterButton("合計", MeterBlue, Modifier.fillMaxWidth())
             Spacer(Modifier.weight(1f))
-            MeterButton("1/3", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), 20.sp)
         }
 
         Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             BalancePanel(Modifier.height(228.dp), runtime, controller)
             Spacer(Modifier.weight(1f))
-            BottomControls(runtime, controller)
+            BottomControls(runtime)
         }
 
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -254,18 +253,18 @@ internal fun formatFareAmount(yen: Long) = FareAmountParts(yen.formatYen(), "円
 private fun Long.formatYen() = "%,d".format(this)
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController) {
+private fun BottomControls(runtime: MeterRuntimeSnapshot) {
     val labels = softKeyLabels(runtime.meterState)
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         labels.forEachIndexed { index, label ->
-            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = if (index == 5) controller::shortRoadModePress else null)
+            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023))
         }
     }
 }
 
 internal fun softKeyLabels(state: MeterState) = when (state) {
-    MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地", "高速")
-    MeterState.PAYMENT -> listOf("明細", "置換", "立替", "チケット", "定額", "高速")
+    MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地")
+    MeterState.PAYMENT -> listOf("明細", "置換", "立替", "チケット", "定額")
     else -> emptyList()
 }
 

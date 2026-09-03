@@ -21,12 +21,12 @@ class MeterPresentationTest {
 
     @Test
     fun occupiedShowsOccupiedSoftKeysAndChargeRail() {
-        assertEquals(listOf("早朝", "高割", "障割", "予約", "経由地", "高速"), softKeyLabels(MeterState.OCCUPIED))
+        assertEquals(listOf("早朝", "高割", "障割", "予約", "経由地"), softKeyLabels(MeterState.OCCUPIED))
         assertTrue(showsChargeProgressRail(MeterState.OCCUPIED))
     }
 
     @Test
     fun paymentShowsPaymentSoftKeys() {
-        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額", "高速"), softKeyLabels(MeterState.PAYMENT))
+        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeyLabels(MeterState.PAYMENT))
     }
 }

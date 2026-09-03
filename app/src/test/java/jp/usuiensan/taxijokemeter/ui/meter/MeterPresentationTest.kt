@@ -38,7 +38,7 @@ class MeterPresentationTest {
 
     @Test
     fun occupiedShowsPrimaryOperationSoftKeysAndChargeRail() {
-        assertEquals(listOf("人員", "経由地", "迎車"), softKeyLabels(MeterState.OCCUPIED))
+        assertEquals(listOf("人員", "経由地", "迎車", "割増", "割引"), softKeyLabels(MeterState.OCCUPIED))
         assertTrue(showsChargeProgressRail(MeterState.OCCUPIED))
     }
 
@@ -97,7 +97,7 @@ class MeterPresentationTest {
 
     @Test fun everyMeterStateUsesFiveSoftKeySlots() {
         assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY))
-        assertEquals(listOf("人員", "経由地", "迎車", null, null), softKeySlots(MeterState.OCCUPIED))
+        assertEquals(listOf("人員", "経由地", "迎車", "割増", "割引"), softKeySlots(MeterState.OCCUPIED))
         assertEquals(listOf(null, null, null, null, null), softKeySlots(MeterState.PAYMENT))
         assertEquals(listOf(null, null, null, null, null), softKeySlots(MeterState.TOTAL))
         assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
@@ -148,8 +148,8 @@ class MeterPresentationTest {
         val warning = SafetyWarning("test", MeterState.OCCUPIED, 1_000L, 4_000L, "text")
         assertTrue(warning.isVisibleAt(3_999L))
         assertFalse(warning.isVisibleAt(4_000L))
-        assertFalse(showsSafetyWarning(MeterState.PAYMENT))
-        assertFalse(showsSafetyWarning(MeterState.TOTAL))
+        assertTrue(showsSafetyWarning(MeterState.PAYMENT))
+        assertTrue(showsSafetyWarning(MeterState.TOTAL))
     }
 
     @Test fun chargeRailUsesOneKnobCenterForProgressAndIcon() {

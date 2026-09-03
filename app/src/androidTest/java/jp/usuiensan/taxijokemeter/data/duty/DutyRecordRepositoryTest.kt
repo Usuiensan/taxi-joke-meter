@@ -42,7 +42,7 @@ class DutyRecordRepositoryTest {
 
     @Test fun v9SchemaContainsReportFoundationTablesAndTripColumns() {
         val db = database.openHelper.readableDatabase
-        assertEquals(9, db.version)
+        assertEquals(10, db.version)
         assertTrue(db.query("PRAGMA table_info(trips)").use { cursor ->
             generateSequence { if (cursor.moveToNext()) cursor.getString(cursor.getColumnIndexOrThrow("name")) else null }.toList()
                 .containsAll(listOf("serviceDate", "tripNumber", "actualDistanceMeters", "chargeableDistanceMeters", "meteredFareYen", "totalFareYen", "fareInitialDistanceMeters", "fareInitialFareYen", "fareDistanceIncrementMeters", "fareDistanceIncrementFareYen", "fareLowSpeedLimitKmh", "fareLowSpeedTimeIncrementSeconds"))

@@ -31,6 +31,8 @@ data class Trip(
     val fareDistanceIncrementFareYen: Long? = null,
     val fareLowSpeedLimitKmh: Int? = null,
     val fareLowSpeedTimeIncrementSeconds: Int? = null,
+    val fareAdjustmentType: FareAdjustmentType = FareAdjustmentType.NONE,
+    val fareAdjustmentPercent: Int = 0,
 ) {
     init {
         require(passengerCount >= 0)

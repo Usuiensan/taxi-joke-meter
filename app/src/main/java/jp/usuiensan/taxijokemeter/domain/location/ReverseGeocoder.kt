@@ -40,7 +40,9 @@ fun japaneseAddress(locality: String?, subLocality: String?, subThoroughfare: St
     val parts = listOf(locality, subLocality, subThoroughfare)
         .mapNotNull { it?.trim()?.takeIf(::isJapaneseAddressPart) }
         .distinct()
-    return (if (parts.isNotEmpty()) parts.joinToString("") else addressLine?.trim()?.takeIf(::isJapaneseDisplayText))
+    val fields = parts.joinToString("")
+    val line = addressLine?.let(::cleanJapaneseAddressLine)
+    return (line?.takeIf { looksLikeAddress(it) && it.length >= fields.length } ?: fields.takeIf { it.isNotEmpty() } ?: line)
         ?.takeIf(String::isNotEmpty)
 }
 
@@ -54,6 +56,17 @@ private fun isJapaneseDisplayText(value: String): Boolean = value.any { it in '\
 private fun isJapaneseAddressPart(value: String): Boolean = isJapaneseDisplayText(value) || value.matches(Regex("[0-9０-９-]+"))
 
 private fun looksLikeAddress(value: String): Boolean = value.matches(Regex(".*(丁目|番地?|号|^[0-9０-９-]+$).*"))
+
+private fun cleanJapaneseAddressLine(value: String): String? {
+    if (!isJapaneseDisplayText(value)) return null
+    return value.trim()
+        .replace(Regex("〒?\\d{3}-?\\d{4}\\s*"), "")
+        .replace(Regex("^(日本[、,\\s]*)"), "")
+        .replace(Regex("^(北海道|東京都|京都府|大阪府|.{2,3}県)"), "")
+        .replace(Regex("[、,]"), "")
+        .trim()
+        .takeIf { it.isNotEmpty() }
+}
 
 private fun facilityName(address: ReverseGeocodeAddress): String? = address.featureName?.trim()?.takeIf {
     isJapaneseDisplayText(it) && it != address.roadName && !looksLikeAddress(it)

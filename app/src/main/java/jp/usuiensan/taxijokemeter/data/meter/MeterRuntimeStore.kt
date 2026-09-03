@@ -7,6 +7,7 @@ import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentType
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,8 @@ data class MeterRuntimeSnapshot(
     val fareYen: Long = 0,
     val meteredFareYen: Long = 0,
     val fareChargesYen: Long = 0,
+    val fareAdjustmentType: FareAdjustmentType = FareAdjustmentType.NONE,
+    val fareAdjustmentPercent: Int = 0,
     val chargeableDistanceMeters: Long = 0,
     val actualDistanceMeters: Long = 0,
     val lowSpeedSeconds: Long = 0,
@@ -87,7 +90,7 @@ object MeterRuntimeStore {
     val snapshot: StateFlow<MeterRuntimeSnapshot> = _snapshot.asStateFlow()
     private val warningScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     fun update(transform: (MeterRuntimeSnapshot) -> MeterRuntimeSnapshot) { _snapshot.update(transform) }
-    fun resetMeter() { update { it.copy(fareYen = 0, meteredFareYen = 0, fareChargesYen = 0, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null, pendingReservation = false, passengerCount = 1, waypointCount = 0, pickupFeeApplied = false, restIntervalId = null, restStartedAt = null, restDistanceMeters = 0) } }
+    fun resetMeter() { update { it.copy(fareYen = 0, meteredFareYen = 0, fareChargesYen = 0, fareAdjustmentType = FareAdjustmentType.NONE, fareAdjustmentPercent = 0, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null, pendingReservation = false, passengerCount = 1, waypointCount = 0, pickupFeeApplied = false, restIntervalId = null, restStartedAt = null, restDistanceMeters = 0) } }
 
     fun showSafetyWarning(text: String, nowElapsedRealtimeMillis: Long) {
         val warning = SafetyWarning(UUID.randomUUID().toString(), snapshot.value.meterState, nowElapsedRealtimeMillis, nowElapsedRealtimeMillis + 3_000L, text)

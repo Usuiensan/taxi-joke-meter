@@ -45,6 +45,8 @@ data class TripEntity(
     val fareDistanceIncrementFareYen: Long? = null,
     val fareLowSpeedLimitKmh: Int? = null,
     val fareLowSpeedTimeIncrementSeconds: Int? = null,
+    val fareAdjustmentType: String = "NONE",
+    val fareAdjustmentPercent: Int = 0,
 )
 
 @Entity(

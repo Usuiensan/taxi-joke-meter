@@ -7,6 +7,7 @@ import jp.usuiensan.taxijokemeter.domain.model.EnergyEfficiency
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.FuelType
 import jp.usuiensan.taxijokemeter.domain.model.Powertrain
+import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 
 class FareRuleStore(context: Context, name: String = PREFERENCES_NAME) {
     private val preferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
@@ -44,11 +45,6 @@ class FareRuleStore(context: Context, name: String = PREFERENCES_NAME) {
         private const val KEY_LOW_SPEED_SECONDS = "low_speed_time_increment_seconds"
         private val KEYS = listOf(KEY_INITIAL_DISTANCE, KEY_INITIAL_FARE, KEY_DISTANCE_INCREMENT, KEY_INCREMENT_FARE, KEY_LOW_SPEED_LIMIT, KEY_LOW_SPEED_SECONDS)
 
-        fun defaultRule() = FuelCostFareFactory.create(
-            EnergyCostProfile(FuelType.REGULAR, Powertrain.ICE, 180.0, EnergyEfficiency.KmPerLiter(15.0)),
-            1_000,
-            200,
-            10,
-        )
+        fun defaultRule() = FarePresets.TEN_YEN_PER_KM.rule
     }
 }

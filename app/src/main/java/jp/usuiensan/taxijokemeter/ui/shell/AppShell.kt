@@ -43,6 +43,7 @@ import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettings
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
+import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
 
@@ -138,6 +139,18 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
     var error by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("運賃設定")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FarePresets.BUILT_IN.forEach { preset ->
+                Button(onClick = {
+                    initialDistance = preset.rule.initialDistanceMeters.toString()
+                    initialFare = preset.rule.initialFareYen.toString()
+                    distanceIncrement = preset.rule.distanceIncrementMeters.toString()
+                    incrementFare = preset.rule.distanceIncrementFareYen.toString()
+                    lowSpeedLimit = preset.rule.lowSpeedLimitKmh.toString()
+                    lowSpeedSeconds = preset.rule.lowSpeedTimeIncrementSeconds.toString()
+                }) { Text("プリセット: ${preset.label}") }
+            }
+        }
         FareRuleField("初乗り距離 (m)", initialDistance) { initialDistance = it }
         FareRuleField("初乗り運賃 (円)", initialFare) { initialFare = it }
         FareRuleField("加算距離 (m)", distanceIncrement) { distanceIncrement = it }

@@ -12,7 +12,7 @@ import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleEntity
 import jp.usuiensan.taxijokemeter.data.safety.SafetyEventDao
 import jp.usuiensan.taxijokemeter.data.safety.SafetyEventEntity
 
-@Database(entities = [DutySessionEntity::class, TripEntity::class, TripPlaceEntity::class, TripChargeEntity::class, RestIntervalEntity::class, DutyEventEntity::class, DrivingSampleEntity::class, SafetyEventEntity::class], version = 9, exportSchema = false)
+@Database(entities = [DutySessionEntity::class, TripEntity::class, TripPlaceEntity::class, TripChargeEntity::class, RestIntervalEntity::class, DutyEventEntity::class, DrivingSampleEntity::class, SafetyEventEntity::class], version = 10, exportSchema = false)
 @TypeConverters(DutyConverters::class)
 abstract class DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao
@@ -21,7 +21,7 @@ abstract class DutyDatabase : RoomDatabase() {
 
     companion object {
         fun build(context: Context, databaseName: String = "duty.db"): DutyDatabase = Room.databaseBuilder(context, DutyDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .build()
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -109,6 +109,13 @@ abstract class DutyDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_trip_charges_tripId ON trip_charges(tripId)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS rest_intervals (id TEXT NOT NULL, sessionId TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, startLatitude REAL, startLongitude REAL, startAccuracyMeters REAL, distanceMeters INTEGER NOT NULL, endReason TEXT, PRIMARY KEY(id), FOREIGN KEY(sessionId) REFERENCES duty_sessions(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_rest_intervals_sessionId ON rest_intervals(sessionId)")
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.addColumnIfMissing("fareAdjustmentType", "TEXT NOT NULL DEFAULT 'NONE'")
+                db.addColumnIfMissing("fareAdjustmentPercent", "INTEGER NOT NULL DEFAULT 0")
             }
         }
 

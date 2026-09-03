@@ -41,6 +41,7 @@ class ReverseGeocoderTest {
     fun japaneseAddressUsesJapaneseComponentsWithoutDuplicationOrEnglishFallback() {
         assertEquals("千代田区千代田1丁目1番", japaneseAddress("千代田区", "千代田1丁目", "1番", "Tokyo Chiyoda"))
         assertEquals("平塚市土屋1038", japaneseAddress("平塚市", "土屋", "1038", null))
+        assertEquals("千代田区千代田1丁目1番", japaneseAddress("千代田区", "6", null, "〒100-0001 日本、東京都千代田区千代田1丁目1番"))
         assertNull(japaneseAddress("Chiyoda City", "1-Chome", "", "Tokyo"))
     }
 

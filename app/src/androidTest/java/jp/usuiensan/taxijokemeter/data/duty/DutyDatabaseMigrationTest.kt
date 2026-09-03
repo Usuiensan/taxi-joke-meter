@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DutyDatabaseMigrationTest {
     private lateinit var context: Context
-    private val databaseName = "duty-v8-to-v9-test.db"
+    private val databaseName = "duty-v8-to-v10-test.db"
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
@@ -43,7 +43,7 @@ class DutyDatabaseMigrationTest {
 
         val migrated = DutyDatabase.build(context, databaseName)
         val db = migrated.openHelper.readableDatabase
-        assertEquals(9, db.version)
+        assertEquals(10, db.version)
         db.query("SELECT actualDistanceMeters, chargeableDistanceMeters, meteredFareYen, totalFareYen FROM trips WHERE id = 'trip-v8'").use {
             assertTrue(it.moveToFirst())
             assertEquals(1_250L, it.getLong(0))
@@ -53,6 +53,11 @@ class DutyDatabaseMigrationTest {
         }
         assertTrue(db.query("SELECT id FROM duty_sessions WHERE id = 'duty-v8'").use { it.moveToFirst() })
         assertTrue(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'trip_places'").use { it.moveToFirst() })
+        db.query("SELECT fareAdjustmentType, fareAdjustmentPercent FROM trips WHERE id = 'trip-v8'").use {
+            assertTrue(it.moveToFirst())
+            assertEquals("NONE", it.getString(0))
+            assertEquals(0, it.getInt(1))
+        }
         migrated.close()
     }
 }

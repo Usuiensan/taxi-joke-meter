@@ -25,6 +25,8 @@ import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.SafetyRoadModeChange
 import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
+import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentType
+import jp.usuiensan.taxijokemeter.domain.model.totalFareYen
 import jp.usuiensan.taxijokemeter.domain.road.RoadModeController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
@@ -197,12 +199,19 @@ class MeterController internal constructor(private val context: Context, private
         if (MeterRuntimeStore.snapshot.value.pickupFeeApplied) return
         val amount = TripChargeSettingsStore(context).load().pickupFeeYen
         if (amount <= 0) return
-        MeterRuntimeStore.update { it.copy(pickupFeeApplied = true, fareChargesYen = it.fareChargesYen + amount, fareYen = it.fareYen + amount) }
+        MeterRuntimeStore.update { it.copy(pickupFeeApplied = true, fareChargesYen = it.fareChargesYen + amount, fareYen = totalFareYen(it.meteredFareYen, it.fareAdjustmentType, it.fareAdjustmentPercent, it.fareChargesYen + amount)) }
         enqueue {
             val tripId = activeTripId() ?: return@enqueue
             val db = database()
             try { DutyRecordRepository(db).addChargeIfAbsent(tripId, "PICKUP_FEE", amount, Instant.now()) } finally { db.close() }
         }
+    }
+
+    fun setFareAdjustment(type: FareAdjustmentType, percent: Int) {
+        if (MeterRuntimeStore.snapshot.value.meterState != MeterState.OCCUPIED) return
+        require(percent in 0..999)
+        val actualType = if (percent == 0) FareAdjustmentType.NONE else type
+        MeterRuntimeStore.update { it.copy(fareAdjustmentType = actualType, fareAdjustmentPercent = if (actualType == FareAdjustmentType.NONE) 0 else percent, fareYen = totalFareYen(it.meteredFareYen, actualType, percent, it.fareChargesYen)) }
     }
 
     private fun startTrip(before: MeterState, after: jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState) {
@@ -266,7 +275,7 @@ class MeterController internal constructor(private val context: Context, private
 
     private suspend fun finishTrip(status: TripStatus, revenueIncluded: Boolean, value: MeterRuntimeSnapshot) {
         val current = trip ?: return
-        val completed = current.copy(dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.meteredFareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded, actualDistanceMeters = value.actualDistanceMeters, chargeableDistanceMeters = value.chargeableDistanceMeters, meteredFareYen = value.meteredFareYen, totalFareYen = value.fareYen, additionalChargeYen = value.fareChargesYen)
+        val completed = current.copy(fareAdjustmentType = value.fareAdjustmentType, fareAdjustmentPercent = value.fareAdjustmentPercent, dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.meteredFareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded, actualDistanceMeters = value.actualDistanceMeters, chargeableDistanceMeters = value.chargeableDistanceMeters, meteredFareYen = value.meteredFareYen, totalFareYen = value.fareYen, additionalChargeYen = value.fareChargesYen)
         val db = database()
         try { DutyRecordRepository(db).finishTrip(completed, status, revenueIncluded) } finally { db.close() }
         trip = null

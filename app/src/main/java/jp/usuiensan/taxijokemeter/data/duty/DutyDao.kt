@@ -46,6 +46,8 @@ interface DutyDao {
     suspend fun updateRestDistance(id: String, distanceMeters: Long)
     @Query("UPDATE trips SET actualDistanceMeters = :actualDistanceMeters, chargeableDistanceMeters = :chargeableDistanceMeters, lowSpeedSeconds = :lowSpeedSeconds, meteredFareYen = :meteredFareYen, totalFareYen = :totalFareYen WHERE id = :id")
     suspend fun updateTripMeasurement(id: String, actualDistanceMeters: Long, chargeableDistanceMeters: Long, lowSpeedSeconds: Long, meteredFareYen: Long, totalFareYen: Long)
+    @Query("UPDATE trips SET fareAdjustmentType = :type, fareAdjustmentPercent = :percent WHERE id = :id")
+    suspend fun updateTripAdjustment(id: String, type: String, percent: Int)
     @Query("UPDATE trips SET dropoffAt = :dropoffAt, status = :status, revenueIncluded = :revenueIncluded WHERE id = :id")
     suspend fun finalizeTrip(id: String, dropoffAt: Instant?, status: String, revenueIncluded: Boolean)
 }

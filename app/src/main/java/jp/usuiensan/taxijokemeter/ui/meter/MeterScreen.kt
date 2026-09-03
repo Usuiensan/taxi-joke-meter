@@ -59,6 +59,7 @@ import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentType
 import jp.usuiensan.taxijokemeter.data.meter.SafetyWarning
 import jp.usuiensan.taxijokemeter.R
 import java.time.LocalDateTime
@@ -114,6 +115,7 @@ private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 @Composable
 private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
     var passengerControlsVisible by remember { mutableStateOf(false) }
+    var adjustmentType by remember { mutableStateOf<FareAdjustmentType?>(null) }
     Row(
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -127,8 +129,8 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
             if (showsDateTime(runtime.meterState, false)) {
                 MeterDateHeader()
             }
-            BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller, passengerControlsVisible)
-            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug) { passengerControlsVisible = !passengerControlsVisible }
+            BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller, passengerControlsVisible, adjustmentType) { type, percent -> controller.setFareAdjustment(type, percent); adjustmentType = null }
+            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug, { adjustmentType = it }) { passengerControlsVisible = !passengerControlsVisible }
         }
 
         Column(modifier = Modifier.width(92.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -160,7 +162,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 }
 
 @Composable
-private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController, passengerControlsVisible: Boolean) {
+private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController, passengerControlsVisible: Boolean, adjustmentType: FareAdjustmentType?, onAdjustment: (FareAdjustmentType, Int) -> Unit) {
     Box(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.TopStart,
@@ -245,6 +247,7 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                     }
                 }
             }
+            if (adjustmentType != null) AdjustmentKeypad(adjustmentType, runtime.fareAdjustmentPercent, onAdjustment)
             if (showsChargeProgressRail(runtime.meterState)) {
                 Spacer(Modifier.height(6.dp).fillMaxWidth().background(MeterWhite))
             }
@@ -441,7 +444,7 @@ internal fun roadModeLabel(mode: RoadMode) = when (mode) {
     RoadMode.HIGHWAY2 -> "高速"
 }
 
-internal fun showsSafetyWarning(state: MeterState) = state != MeterState.PAYMENT && state != MeterState.TOTAL
+internal fun showsSafetyWarning(state: MeterState) = true
 
 @Composable
 private fun SafetyWarningOverlay(warning: SafetyWarning, modifier: Modifier) {
@@ -520,7 +523,7 @@ internal fun formatRestDuration(startedAt: Instant?, now: Instant): String {
 }
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onTogglePassengerControls: () -> Unit) {
+private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenAdjustment: (FareAdjustmentType) -> Unit, onTogglePassengerControls: () -> Unit) {
     val rows = if (runtime.meterState == MeterState.EMPTY) emptyMenuRows() else listOf(softKeySlots(runtime.meterState, runtime.menu == MeterMenu.EMPTY_MENU))
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEach { row ->
@@ -546,12 +549,36 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                                 runtime.meterState == MeterState.OCCUPIED && label == "人員" -> onTogglePassengerControls
                                 runtime.meterState == MeterState.OCCUPIED && label == "経由地" -> ({ controller.addWaypoint() })
                                 runtime.meterState == MeterState.OCCUPIED && label == "迎車" -> ({ controller.togglePickupFee() })
+                                runtime.meterState == MeterState.OCCUPIED && label == "割増" -> ({ onOpenAdjustment(FareAdjustmentType.SURCHARGE) })
+                                runtime.meterState == MeterState.OCCUPIED && label == "割引" -> ({ onOpenAdjustment(FareAdjustmentType.DISCOUNT) })
                                 runtime.meterState == MeterState.REST && label == "解除" -> ({ controller.dispatch(MeterAction.REST_RELEASE) })
                                 runtime.meterState == MeterState.DEADHEAD && label == "解除" -> ({ controller.dispatch(MeterAction.RELEASE) })
                                 else -> null
                             },
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdjustmentKeypad(type: FareAdjustmentType, currentPercent: Int, onApply: (FareAdjustmentType, Int) -> Unit) {
+    var digits by remember(type, currentPercent) { mutableStateOf(if (currentPercent == 0) "" else currentPercent.toString()) }
+    Column(Modifier.fillMaxWidth().background(Color(0xFF263238)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(if (type == FareAdjustmentType.SURCHARGE) "割増率 %" else "割引率 %", color = MeterWhite, fontSize = 26.sp)
+        Text(if (digits.isEmpty()) "0" else digits, color = MeterWhite, fontSize = 42.sp, fontWeight = FontWeight.Bold)
+        listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("0", "消去", "決定")).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                row.forEach { key ->
+                    MeterButton(key, Color(0xFF087FA5), Modifier.weight(1f).height(52.dp), size = 26.sp, onClick = {
+                        when (key) {
+                            "消去" -> digits = ""
+                            "決定" -> onApply(type, digits.toIntOrNull() ?: 0)
+                            else -> if (digits.length < 3) digits += key
+                        }
+                    })
                 }
             }
         }
@@ -568,7 +595,7 @@ internal fun reservationLabel(pending: Boolean) = if (pending) "予約 ✓" else
 internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<String?> = when {
     state == MeterState.EMPTY -> emptyMenuRows().flatten()
     else -> when (state) {
-    MeterState.OCCUPIED -> listOf("人員", "経由地", "迎車", null, null)
+    MeterState.OCCUPIED -> listOf("人員", "経由地", "迎車", "割増", "割引")
     MeterState.PAYMENT, MeterState.TOTAL -> listOf(null, null, null, null, null)
     MeterState.DEADHEAD -> listOf(null, null, null, null, "解除")
     MeterState.REST -> listOf(null, null, null, null, "解除")

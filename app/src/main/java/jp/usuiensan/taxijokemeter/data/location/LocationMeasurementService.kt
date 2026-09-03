@@ -33,6 +33,7 @@ import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.measurement.RestDistanceAccumulator
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
+import jp.usuiensan.taxijokemeter.domain.model.totalFareYen
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSignal
@@ -122,7 +123,7 @@ class LocationMeasurementService : Service() {
                 actualDistanceMeters = accumulation?.actualDistanceMeters ?: current.actualDistanceMeters,
                 lowSpeedSeconds = accumulation?.lowSpeedSeconds ?: current.lowSpeedSeconds,
                 meteredFareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.meteredFareYen,
-                fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) + current.fareChargesYen } ?: current.fareYen,
+                fareYen = accumulation?.let { totalFareYen(FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds), current.fareAdjustmentType, current.fareAdjustmentPercent, current.fareChargesYen) } ?: current.fareYen,
                 restDistanceMeters = restDistance?.toLong() ?: current.restDistanceMeters,
                 chargeProgress = if (sample.isValid) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
@@ -235,7 +236,7 @@ class LocationMeasurementService : Service() {
             val result = fareMeasurement?.end()
             result?.let { accumulation -> fareRuleOrNull()?.let { rule ->
                 val fare = FareCalculator.calculate(rule, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds)
-                MeterRuntimeStore.update { state -> state.copy(fareYen = fare + state.fareChargesYen, meteredFareYen = fare, actualDistanceMeters = accumulation.actualDistanceMeters, chargeableDistanceMeters = accumulation.chargeableDistanceMeters, lowSpeedSeconds = accumulation.lowSpeedSeconds) }
+                MeterRuntimeStore.update { state -> state.copy(fareYen = totalFareYen(fare, state.fareAdjustmentType, state.fareAdjustmentPercent, state.fareChargesYen), meteredFareYen = fare, actualDistanceMeters = accumulation.actualDistanceMeters, chargeableDistanceMeters = accumulation.chargeableDistanceMeters, lowSpeedSeconds = accumulation.lowSpeedSeconds) }
                 MeterRuntimeStore.snapshot.value.currentTripId?.let { tripId -> scope.launch { DutyRecordRepository(database).updateTripMeasurement(tripId, accumulation.actualDistanceMeters, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds, fare) } }
             } }
             Log.i(TAG, "料金計測=終了 結果=${result ?: "未開始"}")

@@ -39,6 +39,8 @@ import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
+import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettings
+import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
@@ -122,12 +124,15 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
 private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, onBack: () -> Unit) {
     val context = LocalContext.current
     val current = FareRuleStore(context).load()
+    val chargeSettings = TripChargeSettingsStore(context).load()
     var initialDistance by remember(current) { mutableStateOf(current.initialDistanceMeters.toString()) }
     var initialFare by remember(current) { mutableStateOf(current.initialFareYen.toString()) }
     var distanceIncrement by remember(current) { mutableStateOf(current.distanceIncrementMeters.toString()) }
     var incrementFare by remember(current) { mutableStateOf(current.distanceIncrementFareYen.toString()) }
     var lowSpeedLimit by remember(current) { mutableStateOf(current.lowSpeedLimitKmh.toString()) }
     var lowSpeedSeconds by remember(current) { mutableStateOf(current.lowSpeedTimeIncrementSeconds.toString()) }
+    var pickupFee by remember(chargeSettings) { mutableStateOf(chargeSettings.pickupFeeYen.toString()) }
+    var reservationFee by remember(chargeSettings) { mutableStateOf(chargeSettings.reservationFeeYen.toString()) }
     var error by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("運賃設定")
@@ -137,12 +142,15 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
         FareRuleField("加算運賃 (円)", incrementFare) { incrementFare = it }
         FareRuleField("低速判定速度 (km/h)", lowSpeedLimit) { lowSpeedLimit = it }
         FareRuleField("低速時間加算 (秒)", lowSpeedSeconds) { lowSpeedSeconds = it }
+        FareRuleField("迎車料金 (円)", pickupFee) { pickupFee = it }
+        FareRuleField("予約料金 (円)", reservationFee) { reservationFee = it }
         error?.let { Text(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onBack) { Text("戻る") }
             Button(onClick = {
                 try {
                     FareRuleStore(context).save(FareRule(initialDistance.toLong(), initialFare.toLong(), distanceIncrement.toLong(), incrementFare.toLong(), lowSpeedLimit.toInt(), lowSpeedSeconds.toInt()))
+                    TripChargeSettingsStore(context).save(TripChargeSettings(pickupFee.toLong(), reservationFee.toLong()))
                     error = null
                     onBack()
                 } catch (_: NumberFormatException) {

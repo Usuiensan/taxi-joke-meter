@@ -3,9 +3,9 @@ package jp.usuiensan.taxijokemeter.domain.meter
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 
 enum class DutyLifecycle { BEFORE_DEPARTURE, ACTIVE, ENDED }
-enum class MeterState { EMPTY, OCCUPIED, PAYMENT, TOTAL, DEADHEAD }
+enum class MeterState { EMPTY, OCCUPIED, PAYMENT, TOTAL, DEADHEAD, REST, PICKUP }
 enum class DutyActivity { WORKING, BREAK }
-enum class MeterAction { DEPART, EMPTY, OCCUPIED, PAYMENT, TOTAL, DEADHEAD, RELEASE, BREAK, RESUME, ARRIVE, MENU, BACK }
+enum class MeterAction { DEPART, EMPTY, OCCUPIED, PAYMENT, TOTAL, DEADHEAD, RELEASE, BREAK, RESUME, ARRIVE, MENU, BACK, PICKUP, REST, REST_RELEASE }
 enum class MeterMenu { NONE, EMPTY_MENU }
 
 data class MeterRuntimeState(
@@ -27,7 +27,7 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
                 MeterState.EMPTY -> state.copy(menu = MeterMenu.EMPTY_MENU)
                 MeterState.OCCUPIED, MeterState.TOTAL -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
                 MeterState.PAYMENT -> state
-                MeterState.DEADHEAD -> state
+                MeterState.DEADHEAD, MeterState.REST, MeterState.PICKUP -> state
             }
             MeterAction.OCCUPIED -> if (state.meterState == MeterState.DEADHEAD) state else state.copy(meterState = MeterState.OCCUPIED, menu = MeterMenu.NONE)
             MeterAction.PAYMENT -> if (state.meterState == MeterState.OCCUPIED) {
@@ -42,6 +42,21 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
             }
             MeterAction.DEADHEAD -> state.copy(meterState = MeterState.DEADHEAD, menu = MeterMenu.NONE)
             MeterAction.RELEASE -> if (state.meterState == MeterState.DEADHEAD) {
+                state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
+            } else {
+                state
+            }
+            MeterAction.PICKUP -> if (state.meterState == MeterState.EMPTY) {
+                state.copy(meterState = MeterState.PICKUP, menu = MeterMenu.NONE)
+            } else {
+                state
+            }
+            MeterAction.REST -> if (state.meterState == MeterState.EMPTY) {
+                state.copy(meterState = MeterState.REST, menu = MeterMenu.NONE)
+            } else {
+                state
+            }
+            MeterAction.REST_RELEASE -> if (state.meterState == MeterState.REST) {
                 state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
             } else {
                 state

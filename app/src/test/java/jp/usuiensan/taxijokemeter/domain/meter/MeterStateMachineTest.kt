@@ -5,6 +5,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MeterStateMachineTest {
+    @Test fun emptyCanEnterPickupAndRestCanReleaseToEmpty() {
+        val machine = MeterStateMachine()
+
+        assertEquals(MeterState.PICKUP, machine.dispatch(MeterAction.PICKUP).meterState)
+        assertEquals(
+            MeterState.EMPTY,
+            MeterStateMachine(MeterRuntimeState(meterState = MeterState.REST))
+                .dispatch(MeterAction.REST_RELEASE).meterState,
+        )
+    }
+
     @Test fun paymentCanResumeOrFinalizeButCannotBecomeEmpty() {
         val machine = MeterStateMachine()
         assertEquals(DutyLifecycle.BEFORE_DEPARTURE, machine.state.dutyLifecycle)

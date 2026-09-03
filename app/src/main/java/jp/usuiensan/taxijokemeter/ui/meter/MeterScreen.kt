@@ -299,6 +299,8 @@ internal fun stateLabel(state: MeterState) = when (state) {
     MeterState.PAYMENT -> "支払"
     MeterState.TOTAL -> "合計"
     MeterState.DEADHEAD -> "回送"
+    MeterState.REST -> "休憩"
+    MeterState.PICKUP -> "迎車"
 }
 
 internal fun emptyButtonAction(state: MeterState) = MeterAction.EMPTY
@@ -450,6 +452,7 @@ internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<S
     MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地")
     MeterState.PAYMENT, MeterState.TOTAL -> listOf("明細", "置換", "立替", "チケット", "定額")
     MeterState.DEADHEAD -> listOf(null, null, null, null, "解除")
+    MeterState.REST, MeterState.PICKUP -> listOf(null, null, null, null, null)
     MeterState.EMPTY -> error("unreachable")
     }
 }

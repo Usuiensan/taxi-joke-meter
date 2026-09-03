@@ -31,6 +31,7 @@ import jp.usuiensan.taxijokemeter.data.meter.toMeterAudioCue
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.measurement.RestDistanceAccumulator
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
@@ -73,8 +74,11 @@ class LocationMeasurementService : Service() {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
-            val accumulation = fareMeasurement?.add(sample)
-            runtimeState = runtimeState.copy(previousSample = sample)
+            val rest = MeterRuntimeStore.snapshot.value.takeIf { runtimeState.sampleState.occupancyState == OccupancyState.REST && it.restIntervalId != null }
+            val restDelta = if (runtimeState.previousSample?.occupancyState == OccupancyState.REST) RestDistanceAccumulator.add(runtimeState.previousSample, sample) else 0L
+            val restDistance = rest?.restDistanceMeters?.plus(restDelta)
+            val accumulation = if (sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
+            runtimeState = runtimeState.advance(sample)
             MeasurementDebugStore.update { it.copy(health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()), latestAccuracyMeters = sample.accuracyMeters, latestSpeedMps = sample.speedMps, roadMode = sample.roadMode.name) }
             MeterRuntimeStore.update { current -> current.copy(
                 roadMode = sample.roadMode,
@@ -85,6 +89,7 @@ class LocationMeasurementService : Service() {
                 actualDistanceMeters = accumulation?.actualDistanceMeters ?: current.actualDistanceMeters,
                 lowSpeedSeconds = accumulation?.lowSpeedSeconds ?: current.lowSpeedSeconds,
                 fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.fareYen,
+                restDistanceMeters = if (restDistance != null) restDistance else current.restDistanceMeters,
                 chargeProgress = if (sample.isValid) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
                     val mode = sample.speedMps?.let { speed ->
@@ -95,6 +100,22 @@ class LocationMeasurementService : Service() {
             ) }
             scope.launch(sampleProcessingDispatcher) {
                 repository.save(sample)
+                if (rest != null && restDistance != null) {
+                    val records = DutyRecordRepository(database)
+                    records.updateRestDistance(rest.restIntervalId!!, restDistance)
+                    if (restDistance >= REST_DISTANCE_LIMIT_METERS) {
+                        records.finishRestInterval(rest.restIntervalId, Instant.now(), "AUTO_DISTANCE_1KM")
+                        runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.EMPTY)
+                        MeterRuntimeStore.update { current ->
+                            if (current.restIntervalId == rest.restIntervalId) current.copy(
+                                meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY,
+                                menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU,
+                                restIntervalId = null,
+                                restDistanceMeters = restDistance,
+                            ) else current
+                        }
+                    }
+                }
                 safetyEventDetector.consume(sample).forEach { signal ->
                     when (signal) {
                         is SafetyEventSignal.Started -> {
@@ -277,6 +298,7 @@ class LocationMeasurementService : Service() {
         const val EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS = "low_speed_time_increment_seconds"
         private const val CHANNEL_ID = "duty_measurement"
         private const val NOTIFICATION_ID = 1001
+        private const val REST_DISTANCE_LIMIT_METERS = 1_000L
         private const val TAG = "LocationMeasurement"
     }
 }

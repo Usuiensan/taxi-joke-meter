@@ -10,4 +10,6 @@ data class MeasurementRuntimeState(
 ) {
     fun updateState(roadMode: RoadMode, occupancyState: OccupancyState) =
         copy(sampleState = sampleState.copy(roadMode = roadMode, occupancyState = occupancyState))
+
+    fun advance(sample: DrivingSample) = copy(previousSample = sample)
 }

@@ -23,7 +23,7 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
     fun add(previous: DrivingSample, current: DrivingSample, distanceOnly: Boolean = false): MeasurementAccumulation {
         if (previous.isValid && current.isValid) {
             val elapsed = elapsedBetween(previous, current)
-            val distance = haversineMeters(previous, current)
+            val distance = segmentDistanceMeters(previous, current)
             val speedMps = current.speedMps ?: monotonicElapsed(previous, current)
                 ?.takeIf { it > Duration.ZERO }
                 ?.let { distance / it.toNanos() * 1_000_000_000.0 }
@@ -52,14 +52,4 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
         return (current.elapsedRealtimeNanos - previous.elapsedRealtimeNanos).takeIf { it > 0 }?.let(Duration::ofNanos)
     }
 
-    private fun haversineMeters(first: DrivingSample, second: DrivingSample): Double {
-        val latitudeDelta = Math.toRadians(second.latitude - first.latitude)
-        val longitudeDelta = Math.toRadians(second.longitude - first.longitude)
-        val firstLatitude = Math.toRadians(first.latitude)
-        val secondLatitude = Math.toRadians(second.latitude)
-        val a = sin(latitudeDelta / 2) * sin(latitudeDelta / 2) +
-            cos(firstLatitude) * cos(secondLatitude) *
-            sin(longitudeDelta / 2) * sin(longitudeDelta / 2)
-        return 6_371_000.0 * 2 * asin(sqrt(a.coerceIn(0.0, 1.0)))
-    }
 }

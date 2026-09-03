@@ -44,3 +44,11 @@ UI/layout、Room schema/migration、fare/GPS logic、dependencies、無関係な
 - Android `Geocoder.getFromLocation` の deprecated 警告が出る。今回の scope では既存 platform API を使用し、外部依存は追加していない。
 - 既存の KSP/Kotlin 互換性警告と SDK platform 配置警告が出るが、今回の unit/build は成功した。
 - 実機での Geocoder provider 応答、DB 更新完了タイミング、接続 instrumentation は未実施。
+
+## Fix round 2
+
+- 修正: `ReverseGeocoderTest.kt` の `release` 宣言を `try` の外へ移動し、`finally` から参照可能にした。生産コードと無関係なファイルは変更していない。
+- 実行: `.\gradlew.bat :app:testDebugUnitTest --tests '*ReverseGeocoderTest'`
+- 結果: PASS（`BUILD SUCCESSFUL in 12s`、26 actionable tasks: 3 executed, 23 up-to-date）
+- 実行: `git diff --check`
+- 結果: PASS（終了コード 0。改行コードに関する warning のみ）

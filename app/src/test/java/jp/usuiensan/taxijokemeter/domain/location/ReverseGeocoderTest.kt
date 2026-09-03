@@ -36,10 +36,10 @@ class ReverseGeocoderTest {
     fun reverseGeocodeWorkDoesNotBlockTheSerializedOperationQueue() = runBlocking<Unit> {
         val operationDispatcher = newSingleThreadContext("operation")
         val reverseDispatcher = newSingleThreadContext("reverse-geocode")
+        val release = CountDownLatch(1)
         try {
             val operationScope = CoroutineScope(operationDispatcher)
             val started = CompletableDeferred<Unit>()
-            val release = CountDownLatch(1)
             val reverse = operationScope.launchReverseGeocode(reverseDispatcher) {
                 started.complete(Unit)
                 release.await(2, TimeUnit.SECONDS)

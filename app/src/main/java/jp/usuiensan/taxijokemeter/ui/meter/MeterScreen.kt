@@ -2,6 +2,7 @@ package jp.usuiensan.taxijokemeter.ui.meter
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,7 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeSnapshot
+import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
 import jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
@@ -82,11 +87,8 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 
         Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             BalancePanel(Modifier.height(160.dp), runtime, controller)
-            MeterRow("運賃料金計", "${runtime.fareYen}円")
-            MeterRow("走行距離", "${runtime.chargeableDistanceMeters}m")
-            MeterRow("低速時間", "${runtime.lowSpeedSeconds}秒")
             Spacer(Modifier.weight(1f))
-            BottomControls(controller)
+            BottomControls(runtime, controller)
         }
 
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -107,17 +109,28 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
         Column(modifier = Modifier.fillMaxWidth()) {
             if (runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE) {
                 MeterButton("出庫", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.DEPART) })
-            } else if (runtime.menu == MeterMenu.EMPTY_MENU) {
+            } else if (runtime.meterState == MeterState.EMPTY || runtime.menu == MeterMenu.EMPTY_MENU) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Text("回送", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.DEADHEAD) })
-                    Text("休憩", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.BREAK) })
+                    Text("メニュー", color = MeterWhite)
                     Text("入庫", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.ARRIVE) })
                 }
-            } else Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("残金", color = MeterRed, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("${runtime.fareYen}", color = MeterWhite, fontSize = 76.sp, fontWeight = FontWeight.Light)
-                    Text("円", color = MeterWhite, fontSize = 24.sp, modifier = Modifier.padding(bottom = 8.dp))
+            } else if (runtime.meterState == MeterState.PAYMENT) {
+                Column(Modifier.fillMaxWidth()) {
+                    MeterRow("合計", "${runtime.fareYen.formatYen()}円", 22.sp)
+                    MeterRow("運賃料金計", "${runtime.fareYen.formatYen()}円", 22.sp)
+                    MeterRow("通行料他", "0円", 22.sp)
+                }
+            } else if (runtime.meterState == MeterState.OCCUPIED) {
+                Column(Modifier.fillMaxWidth()) {
+                    Text("実車", color = MeterWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    runtime.chargeProgress?.let { ChargeProgressRail(it.mode, it.fraction) }
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("運賃", color = MeterWhite, fontSize = 20.sp)
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(runtime.fareYen.formatYen(), color = MeterWhite, fontSize = 76.sp, fontWeight = FontWeight.Light, maxLines = 1, softWrap = false)
+                            Text("円", color = MeterWhite, fontSize = 24.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(6.dp).fillMaxWidth().background(MeterWhite))
@@ -126,26 +139,51 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
 }
 
 @Composable
-private fun MeterRow(label: String, value: String) {
+private fun MeterRow(label: String, value: String, valueSize: androidx.compose.ui.unit.TextUnit = 32.sp) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(Color(0xFF4D5C64)).padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().background(Color(0xFF4D5C64)).padding(horizontal = 8.dp, vertical = 0.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = MeterWhite, fontSize = 18.sp)
-        Text(value, color = MeterWhite, fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+        Text(value, color = MeterWhite, fontSize = valueSize, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
     }
 }
 
 @Composable
-private fun BottomControls(controller: MeterController) {
+private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.CenterStart) {
+        val iconSize = 34.dp
+        val travel = (maxWidth - iconSize).coerceAtLeast(0.dp)
+        val iconOffset = travel * fraction.coerceIn(0f, 1f)
+        Canvas(Modifier.fillMaxWidth().height(20.dp)) {
+            val y = size.height / 2
+            val railColor = if (mode == ChargeProgressMode.TIME) Color(0xFF2A9FD6) else Color(0xFF57B957)
+            drawLine(railColor, Offset(0f, y), Offset(size.width * fraction.coerceIn(0f, 1f), y), strokeWidth = 8f)
+            drawLine(MeterWhite, Offset(size.width * fraction.coerceIn(0f, 1f), y), Offset(size.width, y), strokeWidth = 8f)
+            repeat(11) { index ->
+                val x = size.width * index / 10f
+                drawLine(Color(0xFF647078), Offset(x, y - 8f), Offset(x, y + 8f), strokeWidth = 1f)
+            }
+        }
+        androidx.compose.foundation.Image(
+            painter = painterResource(if (mode == ChargeProgressMode.TIME) jp.usuiensan.taxijokemeter.R.drawable.charge_time_clock else jp.usuiensan.taxijokemeter.R.drawable.charge_distance_wheel),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.requiredSize(iconSize).graphicsLayer { translationX = iconOffset.toPx() },
+        )
+    }
+}
+
+private fun Long.formatYen() = "%,d".format(this)
+
+@Composable
+private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController) {
+    val labels = if (runtime.meterState == MeterState.PAYMENT) listOf("明細", "置換", "立替", "チケット", "定額", "高速") else listOf("早朝", "高割", "障割", "予約", "経由地", "高速")
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        MeterButton("明細", Color(0xFFB6D744), Modifier.weight(1f), Color(0xFF16200C))
-        MeterButton("人員", Color(0xFF1AA4D1), Modifier.weight(1f))
-        MeterButton("経由地", MeterWhite, Modifier.weight(1f), Color(0xFF1C2023))
-        MeterButton("障割", Color(0xFF98A853), Modifier.weight(1f), Color(0xFF1C2023))
-        MeterButton("迎車", Color(0xFF1AA4D1), Modifier.weight(1f))
-        MeterButton("高速", MeterWhite, Modifier.weight(1f), Color(0xFF1C2023), onClick = controller::shortRoadModePress)
+        labels.forEachIndexed { index, label ->
+            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = if (index == 5) controller::shortRoadModePress else null)
+        }
     }
 }
 

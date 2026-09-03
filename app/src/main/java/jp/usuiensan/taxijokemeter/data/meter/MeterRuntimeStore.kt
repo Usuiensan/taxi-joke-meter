@@ -25,11 +25,12 @@ data class MeterRuntimeSnapshot(
     val menu: MeterMenu = MeterMenu.NONE,
     val dutySessionId: String? = null,
     val tripStartedAt: java.time.Instant? = null,
+    val chargeProgress: ChargeProgressUiState? = null,
 )
 
 object MeterRuntimeStore {
     private val _snapshot = MutableStateFlow(MeterRuntimeSnapshot())
     val snapshot: StateFlow<MeterRuntimeSnapshot> = _snapshot.asStateFlow()
     fun update(transform: (MeterRuntimeSnapshot) -> MeterRuntimeSnapshot) { _snapshot.value = transform(_snapshot.value) }
-    fun resetMeter() { update { it.copy(fareYen = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0) } }
+    fun resetMeter() { update { it.copy(fareYen = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) } }
 }

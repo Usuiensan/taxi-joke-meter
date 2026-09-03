@@ -1,6 +1,7 @@
 package jp.usuiensan.taxijokemeter.data.meter
 
 import android.content.Context
+import android.content.pm.PackageManager
 import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
@@ -34,6 +35,7 @@ class MeterController(private val context: Context) {
     private val fareRule = FuelCostFareFactory.create(EnergyCostProfile(FuelType.REGULAR, Powertrain.ICE, 180.0, EnergyEfficiency.KmPerLiter(15.0)), 1_000, 200, 10)
 
     fun dispatch(action: MeterAction) {
+        if (action == MeterAction.DEPART && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         val before = machine.state
         val after = machine.dispatch(action)
         when (action) {
@@ -55,7 +57,7 @@ class MeterController(private val context: Context) {
             MeterAction.EMPTY -> {
                 if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) finishTrip(TripStatus.VOIDED, false)
                 else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) finishTrip(TripStatus.COMPLETED, true)
-                MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.fareYen, chargeableDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.lowSpeedSeconds, tripStartedAt = null) }
+                MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.fareYen, chargeableDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.lowSpeedSeconds, chargeProgress = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) null else it.chargeProgress, tripStartedAt = null) }
             }
             MeterAction.DEADHEAD -> { MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }; event(DutyEventType.DEADHEAD_START) }
             MeterAction.BREAK -> { MeterRuntimeStore.update { it.copy(dutyActivity = after.dutyActivity, menu = after.menu) }; event(DutyEventType.BREAK_START) }

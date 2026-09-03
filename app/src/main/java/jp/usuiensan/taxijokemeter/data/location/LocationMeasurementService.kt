@@ -26,6 +26,8 @@ import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
+import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
+import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
 import jp.usuiensan.taxijokemeter.domain.fare.FareCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +67,13 @@ class LocationMeasurementService : Service() {
                 chargeableDistanceMeters = accumulation?.chargeableDistanceMeters ?: current.chargeableDistanceMeters,
                 lowSpeedSeconds = accumulation?.lowSpeedSeconds ?: current.lowSpeedSeconds,
                 fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.fareYen,
+                chargeProgress = if (sample.isValid) {
+                    val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds)
+                    val mode = sample.speedMps?.let { speed ->
+                        if (speed * 3.6 < fareRule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
+                    } ?: current.chargeProgress?.mode ?: ChargeProgressMode.DISTANCE
+                    jp.usuiensan.taxijokemeter.data.meter.ChargeProgressUiState(mode, ChargeProgressMapper.fraction(fareRule, values.chargeableDistanceMeters, values.lowSpeedSeconds))
+                } else current.chargeProgress,
             ) }
             scope.launch {
                 repository.save(sample)

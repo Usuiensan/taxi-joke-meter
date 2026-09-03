@@ -18,6 +18,13 @@ import java.util.UUID
 
 class DutyMeasurementController(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var startRequested = false
+
+    fun ensureMeasurementRunning(fareRule: FareRule) {
+        if (MeasurementDebugStore.snapshot.value.running || startRequested) return
+        startRequested = true
+        start(RoadMode.GENERAL, OccupancyState.EMPTY, fareRule)
+    }
 
     fun start(roadMode: RoadMode, occupancyState: OccupancyState, fareRule: FareRule, sessionId: String = UUID.randomUUID().toString()): String {
         val database = DutyDatabase.build(context)
@@ -41,6 +48,7 @@ class DutyMeasurementController(private val context: Context) {
     }
 
     fun stop() {
+        startRequested = false
         context.stopService(Intent(context, LocationMeasurementService::class.java))
     }
 

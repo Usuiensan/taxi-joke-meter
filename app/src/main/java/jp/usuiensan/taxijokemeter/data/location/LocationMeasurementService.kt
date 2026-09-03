@@ -19,6 +19,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import jp.usuiensan.taxijokemeter.MainActivity
 import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
+import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
@@ -45,7 +46,7 @@ class LocationMeasurementService : Service() {
     private lateinit var repository: DrivingSampleRepository
     private lateinit var mapper: LocationSampleMapper
     private lateinit var fareRule: FareRule
-    private lateinit var fareMeasurement: FareMeasurementSession
+    private var fareMeasurement: FareMeasurementSession? = null
     private var runtimeState = MeasurementRuntimeState(DrivingSampleState("", RoadMode.GENERAL, OccupancyState.EMPTY))
     private val savedSampleCount = AtomicInteger()
     private val healthTracker = LocationHealthTracker()
@@ -56,7 +57,7 @@ class LocationMeasurementService : Service() {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
-            val accumulation = fareMeasurement.add(sample)
+            val accumulation = fareMeasurement?.add(sample)
             runtimeState = runtimeState.copy(previousSample = sample)
             MeasurementDebugStore.update { it.copy(health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()), latestAccuracyMeters = sample.accuracyMeters, latestSpeedMps = sample.speedMps, roadMode = sample.roadMode.name) }
             MeterRuntimeStore.update { current -> current.copy(
@@ -118,12 +119,12 @@ class LocationMeasurementService : Service() {
             savedSampleCount.set(0)
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, roadMode = runtimeState.sampleState.roadMode.name))
             MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY, roadMode = runtimeState.sampleState.roadMode) }
-            startForegroundCompat()
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "GPS状態=権限なし")
                 stopSelf()
                 return START_NOT_STICKY
             }
+            startForegroundCompat()
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, listener, Looper.getMainLooper())
             healthHandler.post(healthWatchdog)
             Log.i(TAG, "GPS状態=計測開始 sessionId=${runtimeState.sampleState.dutySessionId}")
@@ -133,17 +134,19 @@ class LocationMeasurementService : Service() {
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: runtimeState.sampleState.roadMode.name),
                 OccupancyState.valueOf(intent.getStringExtra(EXTRA_OCCUPANCY_STATE) ?: runtimeState.sampleState.occupancyState.name),
             )
-            fareMeasurement.setOccupancyState(runtimeState.sampleState.occupancyState)
+            fareMeasurement?.setOccupancyState(runtimeState.sampleState.occupancyState)
             MeasurementDebugStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode.name) }
             MeterRuntimeStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode) }
         } else if (intent?.action == ACTION_BEGIN_FARE) {
+            val session = ensureFareMeasurementInitialized() ?: return START_NOT_STICKY
             runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.OCCUPIED)
-            fareMeasurement.begin(OccupancyState.OCCUPIED)
+            session.begin(OccupancyState.OCCUPIED)
+            session.setOccupancyState(OccupancyState.OCCUPIED)
             MeterRuntimeStore.update { it.copy(meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) }
             Log.i(TAG, "料金計測=開始")
         } else if (intent?.action == ACTION_END_FARE) {
-            val result = fareMeasurement.end()
-            result?.let { MeterRuntimeStore.update { state -> state.copy(fareYen = FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds), chargeableDistanceMeters = it.chargeableDistanceMeters, lowSpeedSeconds = it.lowSpeedSeconds) } }
+            val result = fareMeasurement?.end()
+            result?.let { accumulation -> fareRuleOrNull()?.let { rule -> MeterRuntimeStore.update { state -> state.copy(fareYen = FareCalculator.calculate(rule, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds), chargeableDistanceMeters = accumulation.chargeableDistanceMeters, lowSpeedSeconds = accumulation.lowSpeedSeconds) } } }
             Log.i(TAG, "料金計測=終了 結果=${result ?: "未開始"}")
         }
         return START_NOT_STICKY
@@ -159,6 +162,20 @@ class LocationMeasurementService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun ensureFareMeasurementInitialized(): FareMeasurementSession? {
+        if (fareMeasurement == null) {
+            val rule = fareRuleOrNull() ?: run {
+                Log.e(TAG, "料金計測=開始不可 FareRule未初期化")
+                return null
+            }
+            fareRule = rule
+            fareMeasurement = FareMeasurementSession(rule)
+        }
+        return fareMeasurement
+    }
+
+    private fun fareRuleOrNull(): FareRule? = if (::fareRule.isInitialized) fareRule else FareRuleStore(this).load()
 
     private fun startForegroundCompat() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)

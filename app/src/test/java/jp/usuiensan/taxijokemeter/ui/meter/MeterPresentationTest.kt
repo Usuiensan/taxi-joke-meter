@@ -68,4 +68,8 @@ class MeterPresentationTest {
         assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeySlots(MeterState.TOTAL))
         assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
     }
+
+    @Test fun emptyMenuUsesFixedMenuSoftKeySlots() {
+        assertEquals(listOf("回送", "レポート", "再発行", null, "戻る"), softKeySlots(MeterState.EMPTY, true))
+    }
 }

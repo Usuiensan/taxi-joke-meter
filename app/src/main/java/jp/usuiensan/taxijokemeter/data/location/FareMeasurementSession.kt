@@ -12,12 +12,16 @@ class FareMeasurementSession(fareRule: FareRule) {
     private var anchor: DrivingSample? = null
     private var result: MeasurementAccumulation? = null
     private var occupancyState: OccupancyState? = null
+    var isActive: Boolean = false
+        private set
 
     fun begin(initialOccupancyState: OccupancyState? = null) {
+        if (isActive) return
         accumulator = TripMeasurementAccumulator(fareRule)
         anchor = null
         result = null
         occupancyState = initialOccupancyState
+        isActive = true
     }
 
     fun add(current: DrivingSample): MeasurementAccumulation? {
@@ -40,11 +44,13 @@ class FareMeasurementSession(fareRule: FareRule) {
     }
 
     fun end(): MeasurementAccumulation? {
+        if (!isActive) return null
         val completed = result
         accumulator = null
         anchor = null
         result = null
         occupancyState = null
+        isActive = false
         return completed
     }
 

@@ -13,6 +13,18 @@ import java.time.Instant
 class FareMeasurementSessionTest {
     private val rule = FareRule(1_000, 500, 200, 100, 10, 75)
 
+    @Test fun beginningTwiceDoesNotResetAnActiveFareMeasurement() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.OCCUPIED)
+        session.add(sample(0.001, 1, occupancyState = OccupancyState.OCCUPIED))
+        session.add(sample(0.002, 2, occupancyState = OccupancyState.OCCUPIED))
+        val first = session.currentResult()
+
+        session.begin(OccupancyState.OCCUPIED)
+
+        assertEquals(first, session.currentResult())
+    }
+
     @Test fun inactiveSessionDoesNotAccumulate() {
         val session = FareMeasurementSession(rule)
 

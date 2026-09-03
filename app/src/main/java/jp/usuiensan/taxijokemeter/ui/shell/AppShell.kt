@@ -57,6 +57,7 @@ fun AppShell() {
         } else {
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
+        if (showMeter) meterController.ensureMeasurementRunning()
         onDispose { }
     }
     BackHandler(enabled = showMeter || showSettings) {

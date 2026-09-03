@@ -29,6 +29,11 @@ class MeterController(private val context: Context) {
     private var trip: Trip? = null
     private var fareRule = FareRuleStore(context).load()
 
+    fun ensureMeasurementRunning() {
+        fareRule = FareRuleStore(context).load()
+        measurement.ensureMeasurementRunning(fareRule)
+    }
+
     fun dispatch(action: MeterAction) {
         if (action == MeterAction.DEPART && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         val before = machine.state
@@ -46,6 +51,7 @@ class MeterController(private val context: Context) {
             }
             MeterAction.OCCUPIED -> {
                 if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY || before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.TOTAL) {
+                    fareRule = FareRuleStore(context).load()
                     val now = Instant.now()
                     trip = Trip(UUID.randomUUID().toString(), now, null, null, null, 0, 0, 0, 0, jp.usuiensan.taxijokemeter.domain.model.PaymentMethod.UNKNOWN, null)
                     MeterRuntimeStore.update { it.copy(meterState = after.meterState, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) }

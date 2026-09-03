@@ -54,6 +54,7 @@ fun AppShell() {
     val activity = context as Activity
     val meterRuntime by MeterRuntimeStore.snapshot.collectAsState()
     val meterController = remember { MeterController(context) }
+    val openFareSettings = { showSettings = true; showMeter = false }
     DisposableEffect(showMeter) {
         activity.requestedOrientation = if (showMeter) {
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -74,8 +75,8 @@ fun AppShell() {
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         when {
             showSettings -> FareRuleSettingsScreen(padding) { showSettings = false; showMeter = true }
-            showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, { showSettings = true; showMeter = false })
-            showMeter -> MeterScreen(padding, meterRuntime, meterController, { showSettings = true; showMeter = false }, { showDebug = true; showMeter = false })
+            showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, openFareSettings)
+            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false })
             else -> MeterScreen(padding, meterRuntime, meterController)
         }
     }

@@ -136,19 +136,19 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
                 Triple("合計", MeterWhite, MeterAction.TOTAL),
             ).forEachIndexed { index, (label, color, action) ->
                 val enabled = rightKeyEnabled(runtime.meterState)[index]
-                MeterButton(
-                    label,
-                    if (enabled) color else Color(0xFF4D5C64),
-                    Modifier.weight(1f).fillMaxWidth(),
-                    if (enabled && color == MeterWhite) Color(0xFF1C2023) else MeterWhite,
-                    onClick = if (enabled) ({ controller.dispatch(action) }) else null,
-                )
+                if (enabled) MeterButton(
+                    label, color, Modifier.weight(1f).fillMaxWidth(),
+                    if (color == MeterWhite) Color(0xFF1C2023) else MeterWhite,
+                    size = 28.sp,
+                    onClick = { controller.dispatch(action) },
+                ) else Spacer(Modifier.weight(1f).fillMaxWidth())
             }
             roadModeButtonModes().forEach { mode ->
                 MeterButton(
                     roadModeLabel(mode),
                     if (runtime.roadMode == mode) Color(0xFF35C75A) else Color(0xFF1C2023),
                     Modifier.weight(1f).fillMaxWidth(),
+                    size = 26.sp,
                     onClick = { controller.setRoadMode(mode) },
                 )
             }
@@ -233,8 +233,8 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                             Modifier.align(Alignment.TopEnd).padding(8.dp),
                             horizontalAlignment = Alignment.End,
                         ) {
-                            Text("経由地: ${runtime.waypointCount}件", color = MeterWhite, fontSize = 18.sp)
-                            if (runtime.pickupFeeApplied) Text("迎車料金: 適用済", color = MeterWhite, fontSize = 18.sp)
+                            Text("経由地: ${runtime.waypointCount}件", color = MeterWhite, fontSize = 22.sp)
+                            if (runtime.pickupFeeApplied) Text("迎車料金: 適用済", color = MeterWhite, fontSize = 22.sp)
                         }
                         runtime.safetyWarning?.takeIf { showsSafetyWarning(runtime.meterState) }?.let { SafetyWarningOverlay(it, Modifier.align(Alignment.TopCenter)) }
                     }
@@ -294,8 +294,8 @@ private fun PaymentDetailRow(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = MeterWhite, fontSize = 18.sp)
-        Text(value, color = MeterWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+        Text(label, color = MeterWhite, fontSize = 24.sp)
+        Text(value, color = MeterWhite, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
     }
 }
 
@@ -309,7 +309,7 @@ private fun MeterStateLabel(text: String) {
             .border(1.dp, Color(0xFFB9E8F4), shape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = MeterWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(text, color = MeterWhite, fontSize = 30.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
     }
 }
 
@@ -447,22 +447,22 @@ private fun Long.formatYen() = "%,d".format(this)
 @Composable
 private fun PassengerControls(runtime: MeterRuntimeSnapshot, controller: MeterController, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("人員", color = MeterWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("人員", color = MeterWhite, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         val canDecrease = runtime.passengerCount > 1
         MeterButton(
             "−",
             if (canDecrease) Color(0xFF2C9ED9) else Color(0xFF4D5C64),
-            Modifier.width(48.dp).height(48.dp),
-            size = 28.sp,
+            Modifier.width(60.dp).height(60.dp),
+            size = 40.sp,
             onClick = if (canDecrease) ({ controller.changePassengerCount(runtime.passengerCount - 1) }) else null,
         )
-        Text("${runtime.passengerCount}", color = MeterWhite, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text("${runtime.passengerCount}", color = MeterWhite, fontSize = 56.sp, fontWeight = FontWeight.Bold)
         val canIncrease = runtime.passengerCount < 9
         MeterButton(
             "+",
             if (canIncrease) Color(0xFF2C9ED9) else Color(0xFF4D5C64),
-            Modifier.width(48.dp).height(48.dp),
-            size = 28.sp,
+            Modifier.width(60.dp).height(60.dp),
+            size = 40.sp,
             onClick = if (canIncrease) ({ controller.changePassengerCount(runtime.passengerCount + 1) }) else null,
         )
     }
@@ -471,11 +471,12 @@ private fun PassengerControls(runtime: MeterRuntimeSnapshot, controller: MeterCo
 @Composable
 private fun CurrentLocationDisplay(location: jp.usuiensan.taxijokemeter.data.meter.CurrentLocationDisplayState, modifier: Modifier) {
     Column(modifier) {
-        location.roadName?.let { Text(it, color = MeterWhite, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        location.areaText?.let { Text(it, color = MeterWhite, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        if (location.roadName == null && location.areaText == null) Text(
+        location.roadName?.let { Text(it, color = MeterWhite, fontSize = 26.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        location.areaText?.let { Text(it, color = MeterWhite, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        location.facilityName?.takeIf { it != location.areaText && it != location.roadName }?.let { Text(it, color = MeterWhite, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        if (location.roadName == null && location.areaText == null && location.facilityName == null) Text(
             if (location.status == CurrentLocationStatus.LOADING) "現在地取得中…" else "現在地を取得できません",
-            color = MeterWhite, fontSize = 18.sp,
+            color = MeterWhite, fontSize = 22.sp,
         )
     }
 }
@@ -497,7 +498,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                             if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite,
                             slotModifier,
                             if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023),
-                            size = if (isRestRelease) 28.sp else 17.sp,
+                            size = if (isRestRelease) 28.sp else 26.sp,
                             onClick = when {
                                 runtime.meterState == MeterState.EMPTY && label == "休憩" -> ({ controller.dispatch(MeterAction.REST) })
                                 runtime.meterState == MeterState.EMPTY && label == "迎車" -> ({ controller.dispatch(MeterAction.PICKUP) })
@@ -530,8 +531,8 @@ internal fun reservationLabel(pending: Boolean) = if (pending) "予約 ✓" else
 internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<String?> = when {
     state == MeterState.EMPTY -> emptyMenuRows().flatten()
     else -> when (state) {
-    MeterState.OCCUPIED -> listOf("人員", "経由地", "迎車", "早朝", "高割")
-    MeterState.PAYMENT, MeterState.TOTAL -> listOf("明細", "置換", "立替", "チケット", "定額")
+    MeterState.OCCUPIED -> listOf("人員", "経由地", "迎車", null, null)
+    MeterState.PAYMENT, MeterState.TOTAL -> listOf(null, null, null, null, null)
     MeterState.DEADHEAD -> listOf(null, null, null, null, "解除")
     MeterState.REST -> listOf(null, null, null, null, "解除")
     MeterState.PICKUP -> listOf(null, null, null, null, null)

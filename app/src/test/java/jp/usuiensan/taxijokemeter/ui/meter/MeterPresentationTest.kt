@@ -37,17 +37,17 @@ class MeterPresentationTest {
 
     @Test
     fun occupiedShowsPrimaryOperationSoftKeysAndChargeRail() {
-        assertEquals(listOf("人員", "経由地", "迎車", "早朝", "高割"), softKeyLabels(MeterState.OCCUPIED))
+        assertEquals(listOf("人員", "経由地", "迎車"), softKeyLabels(MeterState.OCCUPIED))
         assertTrue(showsChargeProgressRail(MeterState.OCCUPIED))
     }
 
     @Test
     fun paymentShowsPaymentSoftKeys() {
-        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeyLabels(MeterState.PAYMENT))
+        assertEquals(emptyList<String>(), softKeyLabels(MeterState.PAYMENT))
     }
 
     @Test fun totalShowsPaymentSoftKeysAndSummaryTitle() {
-        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeyLabels(MeterState.TOTAL))
+        assertEquals(emptyList<String>(), softKeyLabels(MeterState.TOTAL))
         assertEquals("支払", paymentSummaryTitle(MeterState.PAYMENT))
         assertEquals("合計", paymentSummaryTitle(MeterState.TOTAL))
         assertEquals(listOf("運賃料金計" to "2,700円", "通行料他" to "0円"), paymentSummaryRows(2_700))
@@ -96,9 +96,9 @@ class MeterPresentationTest {
 
     @Test fun everyMeterStateUsesFiveSoftKeySlots() {
         assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY))
-        assertEquals(listOf("人員", "経由地", "迎車", "早朝", "高割"), softKeySlots(MeterState.OCCUPIED))
-        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeySlots(MeterState.PAYMENT))
-        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeySlots(MeterState.TOTAL))
+        assertEquals(listOf("人員", "経由地", "迎車", null, null), softKeySlots(MeterState.OCCUPIED))
+        assertEquals(listOf(null, null, null, null, null), softKeySlots(MeterState.PAYMENT))
+        assertEquals(listOf(null, null, null, null, null), softKeySlots(MeterState.TOTAL))
         assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
     }
 

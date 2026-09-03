@@ -94,4 +94,15 @@ class MeterPresentationTest {
         assertFalse(showsSafetyWarning(MeterState.PAYMENT))
         assertFalse(showsSafetyWarning(MeterState.TOTAL))
     }
+
+    @Test fun chargeRailUsesOneKnobCenterForProgressAndIcon() {
+        listOf(0f, 0.25f, 0.5f, 0.75f, 1f).forEach { fraction ->
+            val geometry = chargeRailGeometry(12f, 400f, fraction)
+            assertEquals(12f + 400f * fraction, geometry.knobCenterX, 0f)
+            assertEquals(geometry.knobCenterX, geometry.coloredProgressEndX, 0f)
+            assertEquals(geometry.knobCenterX, geometry.whiteRemainderStartX, 0f)
+        }
+        assertEquals(12f, chargeRailGeometry(12f, 400f, -1f).knobCenterX, 0f)
+        assertEquals(412f, chargeRailGeometry(12f, 400f, 2f).knobCenterX, 0f)
+    }
 }

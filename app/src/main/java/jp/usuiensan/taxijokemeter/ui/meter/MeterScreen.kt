@@ -38,6 +38,7 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
@@ -333,15 +334,21 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
     ) {
         val iconSize = 46.dp
         val iconBodySize = 32.dp
-        val travel = (maxWidth - iconSize).coerceAtLeast(0.dp)
-        val iconOffset = travel * fraction.coerceIn(0f, 1f)
+        val iconRadius = iconSize / 2
+        val trackStart = iconRadius
+        val trackEnd = (maxWidth - iconRadius).coerceAtLeast(trackStart)
+        val geometry = chargeRailGeometry(trackStart.value, (trackEnd - trackStart).value, fraction)
+        val density = LocalDensity.current
         Canvas(Modifier.fillMaxWidth().height(28.dp)) {
             val y = size.height / 2
             val progressColor = if (mode == ChargeProgressMode.TIME) TimeBlue else DistanceGreen
             val radius = 14f
-            drawRoundRect(MeterWhite, topLeft = Offset(0f, y - radius), size = androidx.compose.ui.geometry.Size(size.width, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
-            val filledWidth = maxOf(size.width * fraction.coerceIn(0f, 1f), iconSize.toPx() / 2f)
-            drawRoundRect(progressColor, topLeft = Offset(0f, y - radius), size = androidx.compose.ui.geometry.Size(filledWidth, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
+            val trackStartX = with(density) { trackStart.toPx() }
+            val trackEndX = with(density) { trackEnd.toPx() }
+            val knobCenterX = with(density) { geometry.knobCenterX.dp.toPx() }
+            drawRoundRect(MeterWhite, topLeft = Offset(trackStartX, y - radius), size = androidx.compose.ui.geometry.Size(trackEndX - trackStartX, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
+            drawRoundRect(progressColor, topLeft = Offset(trackStartX, y - radius), size = androidx.compose.ui.geometry.Size(with(density) { geometry.coloredProgressEndX.dp.toPx() } - trackStartX, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
+            drawRoundRect(MeterWhite, topLeft = Offset(with(density) { geometry.whiteRemainderStartX.dp.toPx() }, y - radius), size = androidx.compose.ui.geometry.Size(trackEndX - knobCenterX, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
             repeat(11) { index ->
                 val x = size.width * index / 10f
                 drawLine(Color(0xFF647078), Offset(x, y - 8f), Offset(x, y + 8f), strokeWidth = 2f)
@@ -349,7 +356,7 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
         }
         Box(
             Modifier.requiredSize(iconSize)
-                .graphicsLayer { translationX = iconOffset.toPx() }
+                .graphicsLayer { translationX = with(density) { geometry.knobCenterX.dp.toPx() - iconRadius.toPx() } }
                 .background(if (mode == ChargeProgressMode.TIME) TimeBlue else DistanceGreen, CircleShape)
                 .border(2.dp, MeterBlack, CircleShape),
             contentAlignment = Alignment.Center,
@@ -363,6 +370,17 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
             )
         }
     }
+}
+
+internal data class ChargeRailGeometry(
+    val knobCenterX: Float,
+    val coloredProgressEndX: Float,
+    val whiteRemainderStartX: Float,
+)
+
+internal fun chargeRailGeometry(trackStartX: Float, trackWidth: Float, fraction: Float): ChargeRailGeometry {
+    val knobCenterX = trackStartX + trackWidth.coerceAtLeast(0f) * fraction.coerceIn(0f, 1f)
+    return ChargeRailGeometry(knobCenterX, knobCenterX, knobCenterX)
 }
 
 internal data class FareAmountParts(val number: String, val unit: String)

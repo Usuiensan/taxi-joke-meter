@@ -6,6 +6,7 @@ import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
 import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
+import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
@@ -59,7 +60,7 @@ class MeterController(private val context: Context) {
                     fareRule = FareRuleStore(context).load()
                     val now = Instant.now()
                     trip = Trip(UUID.randomUUID().toString(), now, null, null, null, 0, 0, 0, 0, jp.usuiensan.taxijokemeter.domain.model.PaymentMethod.UNKNOWN, null)
-                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) }
+                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = ChargeProgressMapper.initial(fareRule, it.latestSpeedMps)) }
                     measurement.beginFareMeasurement(fareRule); event(DutyEventType.PICKUP)
                 } else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) {
                     MeterRuntimeStore.update { it.copy(meterState = after.meterState) }

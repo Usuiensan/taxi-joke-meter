@@ -10,6 +10,11 @@ data class ChargeProgressUiState(
 )
 
 object ChargeProgressMapper {
+    fun initial(rule: FareRule, latestSpeedMps: Double?): ChargeProgressUiState = ChargeProgressUiState(
+        mode = if (latestSpeedMps != null && latestSpeedMps * 3.6 < rule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE,
+        fraction = 0f,
+    )
+
     fun fraction(rule: FareRule, distanceMeters: Long, lowSpeedSeconds: Long): Float {
         val combined = distanceMeters * rule.lowSpeedTimeIncrementSeconds.toDouble() +
             lowSpeedSeconds * rule.distanceIncrementMeters.toDouble()

@@ -5,6 +5,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChargeProgressMapperTest {
+    @Test fun initialProgressIsVisibleAtZeroWithSpeedBasedMode() {
+        val rule = FareRule(1_000, 500, 500, 100, 10, 60)
+
+        assertEquals(ChargeProgressUiState(ChargeProgressMode.TIME, 0f), ChargeProgressMapper.initial(rule, 1.0))
+        assertEquals(ChargeProgressUiState(ChargeProgressMode.DISTANCE, 0f), ChargeProgressMapper.initial(rule, null))
+    }
+
     private val rule = FareRule(1_000, 500, 200, 100, 10, 60)
 
     @Test

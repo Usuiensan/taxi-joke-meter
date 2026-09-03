@@ -56,6 +56,7 @@ private val TimeBlue = Color(0xFF2A9FD6)
 private val IconBlack = Color(0xFF0A0A0A)
 private val MeterLogicalWidth = 900.dp
 private val MeterLogicalHeight = 400.dp
+private val MeterSoftKeyHeight = 50.dp
 
 @Composable
 fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}) {
@@ -101,7 +102,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
             }
             BalancePanel(Modifier.height(228.dp), runtime, controller)
             Spacer(Modifier.weight(1f))
-            BottomControls(runtime, onOpenFareSettings)
+            BottomControls(runtime, controller, onOpenFareSettings)
         }
 
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +124,6 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
             if (runtime.meterState == MeterState.DEADHEAD) {
                 Box(Modifier.fillMaxWidth().height(160.dp)) {
                     Text("回送中", color = MeterWhite, fontSize = 36.sp, modifier = Modifier.align(Alignment.Center))
-                    MeterButton("解除", MeterWhite, Modifier.width(120.dp).align(Alignment.BottomEnd), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.RELEASE) })
                 }
             } else if (runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -338,25 +338,32 @@ internal fun formatFareAmount(yen: Long) = FareAmountParts(yen.formatYen(), "円
 private fun Long.formatYen() = "%,d".format(this)
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot, onOpenFareSettings: () -> Unit) {
-    val labels = softKeyLabels(runtime.meterState)
+private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        labels.forEachIndexed { index, label ->
-            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = when {
+        softKeySlots(runtime.meterState).forEachIndexed { index, label ->
+            val slotModifier = Modifier.weight(1f).height(MeterSoftKeyHeight)
+            if (label == null) {
+                Spacer(slotModifier)
+            } else {
+                MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, slotModifier, if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = when {
                 runtime.meterState == MeterState.EMPTY && label == "運賃制" -> onOpenFareSettings
+                runtime.meterState == MeterState.DEADHEAD && label == "解除" -> ({ controller.dispatch(MeterAction.RELEASE) })
                 runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL -> ({})
                 else -> null
-            })
+                })
+            }
         }
     }
 }
 
-internal fun softKeyLabels(state: MeterState) = when (state) {
-    MeterState.EMPTY -> listOf("累計", "運賃制", "高速")
+internal fun softKeySlots(state: MeterState): List<String?> = when (state) {
+    MeterState.EMPTY -> listOf("累計", "運賃制", null, null, "高速")
     MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地")
     MeterState.PAYMENT, MeterState.TOTAL -> listOf("明細", "置換", "立替", "チケット", "定額")
-    else -> emptyList()
+    MeterState.DEADHEAD -> listOf(null, null, null, null, "解除")
 }
+
+internal fun softKeyLabels(state: MeterState) = softKeySlots(state).filterNotNull()
 
 internal fun paymentSummaryTitle(state: MeterState) = when (state) {
     MeterState.PAYMENT -> "支払"

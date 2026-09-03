@@ -45,9 +45,9 @@ class MeterPresentationTest {
         assertEquals("回送", stateLabel(MeterState.DEADHEAD))
     }
 
-    @Test fun emptyShowsReferenceSoftKeysAndDeadheadHasNoSoftKeys() {
+    @Test fun emptyAndDeadheadUseTheirFixedSoftKeySlots() {
         assertEquals(listOf("累計", "運賃制", "高速"), softKeyLabels(MeterState.EMPTY))
-        assertTrue(softKeyLabels(MeterState.DEADHEAD).isEmpty())
+        assertEquals(listOf("解除"), softKeyLabels(MeterState.DEADHEAD))
     }
 
     @Test fun dateTimeIsShownOnlyOnEmptyAndDeadheadSurfaces() {
@@ -57,5 +57,13 @@ class MeterPresentationTest {
         assertFalse(showsDateTime(MeterState.OCCUPIED, false))
         assertFalse(showsDateTime(MeterState.PAYMENT, false))
         assertFalse(showsDateTime(MeterState.TOTAL, false))
+    }
+
+    @Test fun everyMeterStateUsesFiveSoftKeySlots() {
+        assertEquals(listOf("累計", "運賃制", null, null, "高速"), softKeySlots(MeterState.EMPTY))
+        assertEquals(listOf("早朝", "高割", "障割", "予約", "経由地"), softKeySlots(MeterState.OCCUPIED))
+        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeySlots(MeterState.PAYMENT))
+        assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeySlots(MeterState.TOTAL))
+        assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
     }
 }

@@ -4,6 +4,10 @@ interface ReverseGeocoder {
     suspend fun reverseGeocode(latitude: Double, longitude: Double): ReverseGeocodeResult?
 }
 
+const val PRECISE_MAX_METERS = 30.0
+const val BLOCK_MAX_METERS = 100.0
+const val TOWN_MAX_METERS = 300.0
+
 data class ReverseGeocodeAddress(
     val canonicalAddress: String?,
     val reportAddress: String?,
@@ -11,6 +15,12 @@ data class ReverseGeocodeAddress(
     val featureDetail: String?,
     val roadName: String? = null,
     val areaText: String? = null,
+    val municipality: String? = null,
+    val town: String? = null,
+    val chome: String? = null,
+    val aza: String? = null,
+    val block: String? = null,
+    val houseNumber: String? = null,
 )
 
 data class ReverseGeocodeResult(
@@ -21,7 +31,31 @@ data class ReverseGeocodeResult(
     val roadName: String? = null,
     val areaText: String? = null,
     val facilityName: String? = null,
+    val municipality: String? = null,
+    val town: String? = null,
+    val chome: String? = null,
+    val aza: String? = null,
+    val block: String? = null,
+    val houseNumber: String? = null,
+    val formattedAddress: String? = null,
 )
+
+fun reportAddressForAccuracy(result: ReverseGeocodeResult, accuracyMeters: Double): String? {
+    val municipality = result.municipality?.trim()?.takeIf(String::isNotEmpty)
+    val town = result.town?.trim()?.takeIf(String::isNotEmpty)
+    val chome = result.chome?.trim()?.takeIf(String::isNotEmpty)
+    val aza = result.aza?.trim()?.takeIf(String::isNotEmpty)
+    val precise = result.reportAddress?.trim()?.takeIf(String::isNotEmpty)
+        ?: listOf(municipality, town, chome, aza, result.block, result.houseNumber)
+            .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }.distinct().joinToString("").takeIf(String::isNotEmpty)
+    if (!accuracyMeters.isFinite() || accuracyMeters <= PRECISE_MAX_METERS) return precise
+    val area = when {
+        accuracyMeters <= BLOCK_MAX_METERS -> listOf(municipality, town, chome, aza)
+        accuracyMeters <= TOWN_MAX_METERS -> listOf(municipality, town, aza)
+        else -> listOf(municipality, town, aza)
+    }.mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }.distinct().joinToString("")
+    return area.takeIf(String::isNotEmpty) ?: result.areaText ?: precise
+}
 
 fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
     if (address == null) return null
@@ -33,6 +67,13 @@ fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
         roadName = address.roadName?.trim()?.takeIf(::isJapaneseDisplayText),
         areaText = address.areaText?.trim()?.takeIf(String::isNotEmpty),
         facilityName = facilityName(address),
+        municipality = address.municipality,
+        town = address.town,
+        chome = address.chome,
+        aza = address.aza,
+        block = address.block,
+        houseNumber = address.houseNumber,
+        formattedAddress = address.canonicalAddress,
     )
 }
 

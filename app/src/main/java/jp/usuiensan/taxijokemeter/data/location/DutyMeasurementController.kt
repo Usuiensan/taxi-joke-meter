@@ -76,6 +76,10 @@ class DutyMeasurementController(private val context: Context) {
     }
 }
 
+internal fun hasLocationPermission(context: Context): Boolean =
+    context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
 internal fun resolveMeasurementSessionId(localSessionId: String?, snapshot: MeasurementDebugSnapshot): String? =
     localSessionId ?: snapshot.sessionId
 

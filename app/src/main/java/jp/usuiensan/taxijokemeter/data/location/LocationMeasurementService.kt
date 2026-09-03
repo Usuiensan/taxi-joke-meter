@@ -31,6 +31,9 @@ import jp.usuiensan.taxijokemeter.data.meter.toMeterAudioCue
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocoder
+import jp.usuiensan.taxijokemeter.domain.location.reportAddressForAccuracy
+import jp.usuiensan.taxijokemeter.domain.location.BLOCK_MAX_METERS
 import jp.usuiensan.taxijokemeter.domain.measurement.RestDistanceAccumulator
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.totalFareYen
@@ -80,33 +83,40 @@ class LocationMeasurementService : Service() {
     private var lastGeocodedAtMillis: Long? = null
     private var lastGeocodedLatitude: Double? = null
     private var lastGeocodedLongitude: Double? = null
-    private var geocodeInFlight = false
+    private val geocodeInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     private var hasValidGpsFix = false
-    private lateinit var currentLocationGeocoder: AndroidReverseGeocoder
+    private lateinit var currentLocationGeocoder: ReverseGeocoder
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
-            if (sample.isValid) hasValidGpsFix = true
-            if (sample.isValid && !geocodeInFlight && shouldRefreshCurrentLocation(lastGeocodedAtMillis, lastGeocodedLatitude, lastGeocodedLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude)) {
-                geocodeInFlight = true
+            if (sample.isDisplayValid) hasValidGpsFix = true
+            if (sample.isDisplayValid && shouldRefreshCurrentLocation(lastGeocodedAtMillis, lastGeocodedLatitude, lastGeocodedLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude) && geocodeInFlight.compareAndSet(false, true)) {
                 MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.GEOCODING)) }
                 val latitude = sample.latitude
                 val longitude = sample.longitude
                 scope.launch {
-                    val result = try { currentLocationGeocoder.reverseGeocode(latitude, longitude) } catch (exception: CancellationException) { geocodeInFlight = false; throw exception } catch (_: Exception) { null }
-                    lastGeocodedAtMillis = SystemClock.elapsedRealtime()
-                    lastGeocodedLatitude = latitude
-                    lastGeocodedLongitude = longitude
-                    MeterRuntimeStore.update { state ->
-                        state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null && result.facilityName == null)) {
-                            CurrentLocationDisplayState(status = CurrentLocationStatus.GEOCODE_UNAVAILABLE)
-                        } else {
-                            CurrentLocationDisplayState(result.roadName, result.areaText, result.facilityName, CurrentLocationStatus.AVAILABLE)
-                        })
+                    try {
+                        val result = try { currentLocationGeocoder.reverseGeocode(latitude, longitude) } catch (exception: CancellationException) { throw exception } catch (_: Exception) { null }
+                        lastGeocodedAtMillis = SystemClock.elapsedRealtime()
+                        lastGeocodedLatitude = latitude
+                        lastGeocodedLongitude = longitude
+                        MeterRuntimeStore.update { state ->
+                            state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null && result.facilityName == null)) {
+                                CurrentLocationDisplayState(status = CurrentLocationStatus.GEOCODE_UNAVAILABLE)
+                            } else {
+                                CurrentLocationDisplayState(
+                                    roadName = result.roadName.takeIf { sample.accuracyMeters <= BLOCK_MAX_METERS },
+                                    areaText = reportAddressForAccuracy(result, sample.accuracyMeters),
+                                    facilityName = result.facilityName.takeIf { sample.accuracyMeters <= BLOCK_MAX_METERS },
+                                    status = CurrentLocationStatus.AVAILABLE,
+                                )
+                            })
+                        }
+                    } finally {
+                        geocodeInFlight.set(false)
                     }
-                    geocodeInFlight = false
                 }
             }
             val accumulation = if (sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
@@ -203,13 +213,22 @@ class LocationMeasurementService : Service() {
             MeterRuntimeStore.update { it.copy(currentLocation = CurrentLocationDisplayState(status = CurrentLocationStatus.GPS_LOADING)) }
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = runtimeState.sampleState.dutySessionId, roadMode = runtimeState.sampleState.roadMode.name))
             MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY, menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU, roadMode = runtimeState.sampleState.roadMode) }
-            if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (!hasLocationPermission(this)) {
                 Log.w(TAG, "GPS状態=権限なし")
                 stopSelf()
                 return START_NOT_STICKY
             }
             startForegroundCompat()
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, listener, Looper.getMainLooper())
+            val fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            val providers = buildList {
+                if (fine && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
+                if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
+            }
+            providers.forEach { provider ->
+                locationManager.requestLocationUpdates(provider, 500L, 0f, listener, Looper.getMainLooper())
+                Log.i(TAG, "Location provider started provider=$provider permissionFine=$fine")
+            }
+            if (providers.isEmpty()) Log.w(TAG, "Location provider unavailable")
             healthHandler.post(healthWatchdog)
             Log.i(TAG, "GPS状態=計測開始 sessionId=${runtimeState.sampleState.dutySessionId}")
         } else if (action == ACTION_UPDATE_STATE) {

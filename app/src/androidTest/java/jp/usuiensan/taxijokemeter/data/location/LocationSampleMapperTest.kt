@@ -61,5 +61,6 @@ class LocationSampleMapperTest {
         val poor = Location("gps").apply { time = now.toEpochMilli(); accuracy = 21.0f }
         assertEquals(MeasurementQuality.STALE, mapper.map(stale, state, now).measurementQuality)
         assertEquals(MeasurementQuality.POOR_ACCURACY, mapper.map(poor, state, now).measurementQuality)
+        assertEquals(true, mapper.map(poor, state, now).isDisplayValid)
     }
 }

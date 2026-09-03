@@ -25,6 +25,12 @@ data class DrivingSample(
 ) {
     val isValid: Boolean
         get() = measurementQuality == MeasurementQuality.VALID
+
+    val isDisplayValid: Boolean
+        get() = measurementQuality != MeasurementQuality.UNAVAILABLE &&
+            measurementQuality != MeasurementQuality.STALE &&
+            latitude.isFinite() && longitude.isFinite() &&
+            latitude in -90.0..90.0 && longitude in -180.0..180.0
 }
 
 val RoadMode.safetyLimitKmh: Int

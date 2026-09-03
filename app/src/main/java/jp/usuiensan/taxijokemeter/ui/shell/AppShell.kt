@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
+import jp.usuiensan.taxijokemeter.data.location.hasLocationPermission
 import jp.usuiensan.taxijokemeter.data.location.MeasurementDebugStore
 import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
@@ -90,16 +91,16 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
     val runtime by MeterRuntimeStore.snapshot.collectAsState()
     val controller = remember { DutyMeasurementController(context) }
     var permissionGranted by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        mutableStateOf(hasLocationPermission(context))
     }
-    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> permissionGranted = granted }
+    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted -> permissionGranted = granted.values.any { it } }
     val fareRule = FareRuleStore(context).load()
 
     val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("GPS計測デバッグ")
         Text("位置情報権限: ${if (permissionGranted) "許可" else "未許可"}")
-        if (!permissionGranted) Button(onClick = { requestPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }) { Text("権限を許可") }
+        if (!permissionGranted) Button(onClick = { requestPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }) { Text("権限を許可") }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(enabled = permissionGranted && runtime.dutyLifecycle != jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, onClick = { controller.start(RoadMode.GENERAL, OccupancyState.EMPTY, fareRule) }) { Text("計測開始") }
             Button(enabled = runtime.dutyLifecycle == jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, onClick = controller::stop) { Text("計測停止") }

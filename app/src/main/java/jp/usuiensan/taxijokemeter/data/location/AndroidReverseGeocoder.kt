@@ -18,6 +18,8 @@ class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
         return try {
             if (!Geocoder.isPresent()) return null
             val address = geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull() ?: return null
+            val subLocality = address.subLocality
+            val chomeMatch = Regex("(.+?)([0-9０-９]+丁目)$").matchEntire(subLocality.orEmpty())
             mapReverseGeocode(
                 ReverseGeocodeAddress(
                     canonicalAddress = address.getAddressLine(0),
@@ -26,6 +28,11 @@ class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
                     featureDetail = null,
                     roadName = japaneseRoadName(address.thoroughfare, address.featureName),
                     areaText = japaneseAddress(address.locality, address.subLocality, address.subThoroughfare, address.getAddressLine(0)),
+                    municipality = address.locality,
+                    town = chomeMatch?.groupValues?.get(1) ?: subLocality,
+                    chome = chomeMatch?.groupValues?.get(2),
+                    block = address.premises,
+                    houseNumber = address.subThoroughfare,
                 ),
             )
         } catch (exception: CancellationException) {

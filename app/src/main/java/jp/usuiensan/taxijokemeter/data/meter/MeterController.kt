@@ -8,10 +8,13 @@ import jp.usuiensan.taxijokemeter.data.duty.TripPlaceEntity
 import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
+import jp.usuiensan.taxijokemeter.data.location.hasLocationPermission
 import jp.usuiensan.taxijokemeter.data.location.AndroidReverseGeocoder
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.location.reportAddressForAccuracy
+import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocoder
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
@@ -41,13 +44,17 @@ import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.util.UUID
 
-class MeterController internal constructor(private val context: Context, private val databaseName: String = "duty.db") {
+class MeterController internal constructor(
+    private val context: Context,
+    private val databaseName: String = "duty.db",
+    reverseGeocoder: ReverseGeocoder? = null,
+) {
     @OptIn(ExperimentalCoroutinesApi::class)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val reverseGeocodeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operationMutex = Mutex()
     private val measurement = DutyMeasurementController(context)
-    private val reverseGeocoder = AndroidReverseGeocoder(context)
+    private val reverseGeocoder = reverseGeocoder ?: AndroidReverseGeocoder(context)
     private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context))
     private val roadModeController = RoadModeController()
     private var sessionId: String? = null
@@ -55,7 +62,7 @@ class MeterController internal constructor(private val context: Context, private
     private var fareRule = FareRuleStore(context).load()
 
     fun ensureMeasurementRunning() {
-        if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        if (!hasLocationPermission(context)) return
         fareRule = FareRuleStore(context).load()
         sessionId = measurement.ensureMeasurementRunning(fareRule)
         MeterRuntimeStore.update { it.copy(dutySessionId = sessionId, pendingReservation = reservationPreferences().getBoolean(KEY_PENDING_RESERVATION, it.pendingReservation)) }
@@ -70,7 +77,7 @@ class MeterController internal constructor(private val context: Context, private
     }
 
     fun dispatch(action: MeterAction) {
-        if (action == MeterAction.DEPART && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        if (action == MeterAction.DEPART && !hasLocationPermission(context)) return
         val machine = MeterStateMachine(MeterRuntimeStore.snapshot.value.toMeterRuntimeState())
         val before = machine.state
         if (action == MeterAction.PAYMENT && !shouldProcessPayment(before.meterState)) return
@@ -299,7 +306,7 @@ class MeterController internal constructor(private val context: Context, private
                     place.latitude,
                     place.longitude,
                     result.canonicalAddress,
-                    result.reportAddress,
+                    reportAddressForAccuracy(result, place.accuracyMeters ?: Double.POSITIVE_INFINITY),
                     result.landmarkName,
                     result.landmarkDetail,
                 )

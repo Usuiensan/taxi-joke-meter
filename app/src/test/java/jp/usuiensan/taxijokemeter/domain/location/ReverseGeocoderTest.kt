@@ -91,4 +91,27 @@ class ReverseGeocoderTest {
     fun geocoderFailureProducesNoAddressUpdate() {
         assertNull(mapReverseGeocode(null))
     }
+
+    @Test
+    fun reportAddressGetsCoarserWithoutChangingCanonicalAddress() {
+        val result = ReverseGeocodeResult(
+            canonicalAddress = "東京都平塚市土屋1038",
+            reportAddress = "平塚市土屋1丁目1038",
+            landmarkName = "土屋施設",
+            landmarkDetail = null,
+            roadName = "土屋通り",
+            areaText = "平塚市土屋1丁目",
+            municipality = "平塚市",
+            town = "土屋",
+            chome = "1丁目",
+            block = "10番",
+            houseNumber = "38号",
+        )
+
+        assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 15.0))
+        assertEquals("平塚市土屋1丁目", reportAddressForAccuracy(result, 60.0))
+        assertEquals("平塚市土屋", reportAddressForAccuracy(result, 180.0))
+        assertEquals("平塚市土屋", reportAddressForAccuracy(result, 500.0))
+        assertEquals("東京都平塚市土屋1038", result.canonicalAddress)
+    }
 }

@@ -24,6 +24,7 @@ import java.util.UUID
 class MeterController(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val measurement = DutyMeasurementController(context)
+    private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context))
     private val machine = MeterStateMachine()
     private var sessionId: String? = null
     private var trip: Trip? = null
@@ -41,6 +42,7 @@ class MeterController(private val context: Context) {
         if (action == MeterAction.TOTAL && !shouldFinalizePayment(before.meterState)) return
         if (action == MeterAction.EMPTY && before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) return
         val after = machine.dispatch(action)
+        meterAudioCueForTransition(before.meterState, after.meterState)?.let(audioCuePlayer::enqueue)
         when (action) {
             MeterAction.DEPART -> {
                 fareRule = FareRuleStore(context).load()
@@ -105,6 +107,12 @@ class MeterController(private val context: Context) {
 
     private fun endDuty() { val session = sessionId ?: return; scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }
 
+}
+
+internal fun meterAudioCueForTransition(before: jp.usuiensan.taxijokemeter.domain.meter.MeterState, after: jp.usuiensan.taxijokemeter.domain.meter.MeterState) = when {
+    before != jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED && after == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED -> MeterAudioCue.OCCUPIED
+    before != jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT && after == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT -> MeterAudioCue.PAYMENT
+    else -> null
 }
 
 internal fun shouldProcessPayment(state: jp.usuiensan.taxijokemeter.domain.meter.MeterState) =

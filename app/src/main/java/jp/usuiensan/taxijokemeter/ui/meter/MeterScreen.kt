@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -346,9 +347,9 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
             drawRoundRect(MeterWhite, topLeft = Offset(trackStartX, y - radius), size = androidx.compose.ui.geometry.Size(trackEndX - trackStartX, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
             drawRoundRect(progressColor, topLeft = Offset(trackStartX, y - radius), size = androidx.compose.ui.geometry.Size(with(density) { geometry.coloredProgressEndX.dp.toPx() } - trackStartX, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
             drawRoundRect(MeterWhite, topLeft = Offset(with(density) { geometry.whiteRemainderStartX.dp.toPx() }, y - radius), size = androidx.compose.ui.geometry.Size(trackEndX - knobCenterX, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
-            repeat(11) { index ->
-                val x = size.width * index / 10f
-                drawLine(Color(0xFF647078), Offset(x, y - 8f), Offset(x, y + 8f), strokeWidth = 2f)
+            for (index in 1 until 10) {
+                val x = trackStartX + (trackEndX - trackStartX) * index / 10f
+                drawLine(Color(0xFF647078), Offset(x, y - 8f), Offset(x, y + 8f), strokeWidth = 2f, cap = StrokeCap.Butt)
             }
         }
         Box(

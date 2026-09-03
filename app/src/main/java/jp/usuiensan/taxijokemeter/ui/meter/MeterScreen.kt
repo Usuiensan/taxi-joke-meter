@@ -96,7 +96,9 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
         }
 
         Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            MeterDateHeader()
+            if (showsDateTime(runtime.meterState, runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE)) {
+                MeterDateHeader()
+            }
             BalancePanel(Modifier.height(228.dp), runtime, controller)
             Spacer(Modifier.weight(1f))
             BottomControls(runtime, onOpenFareSettings)
@@ -267,6 +269,9 @@ internal fun stateLabel(state: MeterState) = when (state) {
     MeterState.TOTAL -> "合計"
     MeterState.DEADHEAD -> "回送"
 }
+
+internal fun showsDateTime(state: MeterState, beforeDeparture: Boolean) =
+    beforeDeparture || state == MeterState.EMPTY || state == MeterState.DEADHEAD
 
 private fun stateLabelColor(text: String) = when (text) {
     "空車" -> MeterRed

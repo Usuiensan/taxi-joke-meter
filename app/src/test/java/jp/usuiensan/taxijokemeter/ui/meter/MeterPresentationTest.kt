@@ -49,4 +49,13 @@ class MeterPresentationTest {
         assertEquals(listOf("累計", "運賃制", "高速"), softKeyLabels(MeterState.EMPTY))
         assertTrue(softKeyLabels(MeterState.DEADHEAD).isEmpty())
     }
+
+    @Test fun dateTimeIsShownOnlyOnEmptyAndDeadheadSurfaces() {
+        assertTrue(showsDateTime(MeterState.EMPTY, true))
+        assertTrue(showsDateTime(MeterState.EMPTY, false))
+        assertTrue(showsDateTime(MeterState.DEADHEAD, false))
+        assertFalse(showsDateTime(MeterState.OCCUPIED, false))
+        assertFalse(showsDateTime(MeterState.PAYMENT, false))
+        assertFalse(showsDateTime(MeterState.TOTAL, false))
+    }
 }

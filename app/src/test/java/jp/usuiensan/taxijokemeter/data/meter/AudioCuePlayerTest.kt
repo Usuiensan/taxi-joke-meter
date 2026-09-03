@@ -1,6 +1,7 @@
 package jp.usuiensan.taxijokemeter.data.meter
 
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
+import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -38,5 +39,11 @@ class AudioCuePlayerTest {
         assertEquals(MeterAudioCue.OCCUPIED, meterAudioCueForTransition(MeterState.PAYMENT, MeterState.OCCUPIED))
         assertEquals(MeterAudioCue.PAYMENT, meterAudioCueForTransition(MeterState.OCCUPIED, MeterState.PAYMENT))
         assertEquals(null, meterAudioCueForTransition(MeterState.OCCUPIED, MeterState.OCCUPIED))
+    }
+
+    @Test fun safetyEventTypesMapToTheirCues() {
+        assertEquals(MeterAudioCue.OVERSPEED, SafetyEventType.OVERSPEED.toMeterAudioCue())
+        assertEquals(MeterAudioCue.HARD_ACCELERATION, SafetyEventType.HARD_ACCELERATION.toMeterAudioCue())
+        assertEquals(MeterAudioCue.HARD_DECELERATION, SafetyEventType.HARD_DECELERATION.toMeterAudioCue())
     }
 }

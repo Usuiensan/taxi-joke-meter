@@ -21,17 +21,26 @@ import jp.usuiensan.taxijokemeter.MainActivity
 import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
+import jp.usuiensan.taxijokemeter.data.safety.SafetyEventRepository
+import jp.usuiensan.taxijokemeter.data.meter.AudioCuePlayer
+import jp.usuiensan.taxijokemeter.data.meter.MeterAudioCue
+import jp.usuiensan.taxijokemeter.data.meter.MeterAudioResources
+import jp.usuiensan.taxijokemeter.data.meter.MediaPlayerAudioCueSink
+import jp.usuiensan.taxijokemeter.data.meter.toMeterAudioCue
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
+import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSignal
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
 import jp.usuiensan.taxijokemeter.domain.fare.FareCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -41,9 +50,14 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class LocationMeasurementService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val sampleProcessingDispatcher = Dispatchers.IO.limitedParallelism(1)
     private lateinit var locationManager: LocationManager
     private lateinit var database: DutyDatabase
     private lateinit var repository: DrivingSampleRepository
+    private lateinit var safetyEventRepository: SafetyEventRepository
+    private val safetyEventDetector = SafetyEventDetector()
+    private lateinit var audioCuePlayer: AudioCuePlayer
     private lateinit var mapper: LocationSampleMapper
     private lateinit var fareRule: FareRule
     private var fareMeasurement: FareMeasurementSession? = null
@@ -76,8 +90,14 @@ class LocationMeasurementService : Service() {
                     jp.usuiensan.taxijokemeter.data.meter.ChargeProgressUiState(mode, ChargeProgressMapper.fraction(fareRule, values.chargeableDistanceMeters, values.lowSpeedSeconds))
                 } else current.chargeProgress,
             ) }
-            scope.launch {
+            scope.launch(sampleProcessingDispatcher) {
                 repository.save(sample)
+                safetyEventDetector.consume(sample).forEach { signal ->
+                    when (signal) {
+                        is SafetyEventSignal.Started -> audioCuePlayer.enqueue(signal.type.toMeterAudioCue())
+                        is SafetyEventSignal.Completed -> safetyEventRepository.insert(signal.event)
+                    }
+                }
                 val count = savedSampleCount.incrementAndGet()
                 healthHandler.post {
                     MeasurementDebugStore.update { it.copy(savedSampleCount = count) }
@@ -96,6 +116,8 @@ class LocationMeasurementService : Service() {
         locationManager = getSystemService(LocationManager::class.java)
         database = DutyDatabase.build(this)
         repository = DrivingSampleRepository(database)
+        safetyEventRepository = SafetyEventRepository(database)
+        audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(this, cue) }, MediaPlayerAudioCueSink(this))
         mapper = LocationSampleMapper(MeasurementQualityPolicy(20.0, Duration.ofSeconds(5)))
         createNotificationChannel()
     }

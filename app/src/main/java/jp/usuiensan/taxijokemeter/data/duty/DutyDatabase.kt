@@ -9,16 +9,19 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.TypeConverters
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleDao
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleEntity
+import jp.usuiensan.taxijokemeter.data.safety.SafetyEventDao
+import jp.usuiensan.taxijokemeter.data.safety.SafetyEventEntity
 
-@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class, DrivingSampleEntity::class], version = 7, exportSchema = false)
+@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class, DrivingSampleEntity::class, SafetyEventEntity::class], version = 8, exportSchema = false)
 @TypeConverters(DutyConverters::class)
 abstract class DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao
     abstract fun drivingSampleDao(): DrivingSampleDao
+    abstract fun safetyEventDao(): SafetyEventDao
 
     companion object {
         fun build(context: Context, databaseName: String = "duty.db"): DutyDatabase = Room.databaseBuilder(context, DutyDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .build()
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -72,6 +75,14 @@ abstract class DutyDatabase : RoomDatabase() {
                 if (!db.hasColumn("trips", "status")) db.execSQL("ALTER TABLE trips ADD COLUMN status TEXT NOT NULL DEFAULT 'COMPLETED'")
                 if (!db.hasColumn("trips", "lowSpeedSeconds")) db.execSQL("ALTER TABLE trips ADD COLUMN lowSpeedSeconds INTEGER NOT NULL DEFAULT 0")
                 if (!db.hasColumn("trips", "revenueIncluded")) db.execSQL("ALTER TABLE trips ADD COLUMN revenueIncluded INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE safety_events (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, type TEXT NOT NULL, startedAtElapsedRealtimeMillis INTEGER NOT NULL, endedAtElapsedRealtimeMillis INTEGER NOT NULL, startedAtEpochMillis INTEGER, endedAtEpochMillis INTEGER, peakValue REAL NOT NULL, roadMode TEXT NOT NULL, source TEXT NOT NULL)")
+                db.execSQL("CREATE INDEX index_safety_events_startedAtEpochMillis ON safety_events(startedAtEpochMillis)")
+                db.execSQL("CREATE INDEX index_safety_events_endedAtEpochMillis ON safety_events(endedAtEpochMillis)")
             }
         }
 

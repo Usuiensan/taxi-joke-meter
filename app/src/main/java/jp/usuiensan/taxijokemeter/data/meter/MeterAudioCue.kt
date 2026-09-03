@@ -1,5 +1,7 @@
 package jp.usuiensan.taxijokemeter.data.meter
 
+import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
+
 enum class MeterAudioCue {
     OCCUPIED,
     PAYMENT,
@@ -7,4 +9,10 @@ enum class MeterAudioCue {
     RETURN_TO_GENERAL,
     HARD_ACCELERATION,
     HARD_DECELERATION,
+}
+
+internal fun SafetyEventType.toMeterAudioCue() = when (this) {
+    SafetyEventType.OVERSPEED -> MeterAudioCue.OVERSPEED
+    SafetyEventType.HARD_ACCELERATION -> MeterAudioCue.HARD_ACCELERATION
+    SafetyEventType.HARD_DECELERATION -> MeterAudioCue.HARD_DECELERATION
 }

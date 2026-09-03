@@ -113,7 +113,7 @@ class DrivingSampleRepositoryTest {
     }
 }
 
-@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class], version = 2, exportSchema = false)
+@Database(entities = [DutySessionEntity::class, TripEntity::class, jp.usuiensan.taxijokemeter.data.duty.TripPlaceEntity::class, jp.usuiensan.taxijokemeter.data.duty.TripChargeEntity::class, jp.usuiensan.taxijokemeter.data.duty.RestIntervalEntity::class, DutyEventEntity::class], version = 2, exportSchema = false)
 @androidx.room.TypeConverters(DutyConverters::class)
 abstract class V2DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao
@@ -144,7 +144,7 @@ interface V5DrivingSampleDao {
     @Insert suspend fun insert(sample: V5DrivingSampleEntity)
 }
 
-@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class, V5DrivingSampleEntity::class], version = 5, exportSchema = false)
+@Database(entities = [DutySessionEntity::class, TripEntity::class, jp.usuiensan.taxijokemeter.data.duty.TripPlaceEntity::class, jp.usuiensan.taxijokemeter.data.duty.TripChargeEntity::class, jp.usuiensan.taxijokemeter.data.duty.RestIntervalEntity::class, DutyEventEntity::class, V5DrivingSampleEntity::class], version = 5, exportSchema = false)
 @androidx.room.TypeConverters(DutyConverters::class)
 abstract class V5DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao

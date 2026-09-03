@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import jp.usuiensan.taxijokemeter.domain.model.DutyEvent
+import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.DutyEventType
 import jp.usuiensan.taxijokemeter.domain.model.DutySession
 import jp.usuiensan.taxijokemeter.domain.model.LocationPrecision
@@ -16,6 +17,7 @@ import jp.usuiensan.taxijokemeter.domain.model.RecordedPlace
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.SafetyRoadModeChange
 import jp.usuiensan.taxijokemeter.domain.model.Trip
+import jp.usuiensan.taxijokemeter.domain.model.TripStatus
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -78,5 +80,19 @@ class DutyRecordRepositoryTest {
         repository.appendEvent("duty-2", event)
 
         assertEquals(event, repository.findById("duty-2")!!.events.single())
+    }
+
+    @Test fun startTripNumbersByTokyoServiceDateAndStoresFareSnapshot() = runBlocking {
+        val rule = FareRule(1_000, 500, 200, 100, 10, 75)
+        repository.save(DutySession("duty-1", Instant.EPOCH, null))
+        val first = repository.startTrip("duty-1", Instant.parse("2026-09-03T14:50:00Z"), rule)
+        val second = repository.startTrip("duty-1", Instant.parse("2026-09-03T15:25:00Z"), rule)
+
+        assertEquals("2026-09-03", first.serviceDate)
+        assertEquals(1, first.tripNumber)
+        assertEquals("2026-09-04", second.serviceDate)
+        assertEquals(1, second.tripNumber)
+        assertEquals(TripStatus.ACTIVE, repository.findTrip(first.id)!!.status)
+        assertEquals(rule.initialDistanceMeters, first.fareInitialDistanceMeters)
     }
 }

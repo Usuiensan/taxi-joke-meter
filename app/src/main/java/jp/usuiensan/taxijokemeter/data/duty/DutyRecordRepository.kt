@@ -12,7 +12,10 @@ import jp.usuiensan.taxijokemeter.domain.model.PaymentMethod
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.SafetyRoadModeChange
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
+import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import java.time.Instant
+import java.time.ZoneId
+import java.util.UUID
 
 class DutyRecordRepository(private val database: DutyDatabase) {
     suspend fun save(session: DutySession) = database.withTransaction {
@@ -41,11 +44,36 @@ class DutyRecordRepository(private val database: DutyDatabase) {
     suspend fun markEnded(id: String, endedAt: Instant) {
         database.dutyDao().updateEndedAt(id, endedAt)
     }
+
+    suspend fun startTrip(sessionId: String, pickupAt: Instant, fareRule: FareRule): Trip = database.withTransaction {
+        val serviceDate = pickupAt.atZone(ZoneId.of("Asia/Tokyo")).toLocalDate().toString()
+        val tripNumber = (database.dutyDao().maxTripNumber(serviceDate) ?: 0) + 1
+        Trip(
+            id = UUID.randomUUID().toString(), pickupAt = pickupAt, dropoffAt = null,
+            pickupPlace = null, dropoffPlace = null, passengerCount = 1,
+            operatingDistanceMeters = 0, fareYen = fareRule.initialFareYen, additionalChargeYen = 0,
+            paymentMethod = PaymentMethod.UNKNOWN, note = null, status = TripStatus.ACTIVE,
+            serviceDate = serviceDate, tripNumber = tripNumber, fareInitialDistanceMeters = fareRule.initialDistanceMeters,
+            fareInitialFareYen = fareRule.initialFareYen, fareDistanceIncrementMeters = fareRule.distanceIncrementMeters,
+            fareDistanceIncrementFareYen = fareRule.distanceIncrementFareYen, fareLowSpeedLimitKmh = fareRule.lowSpeedLimitKmh,
+            fareLowSpeedTimeIncrementSeconds = fareRule.lowSpeedTimeIncrementSeconds,
+        ).also { database.dutyDao().insertTrip(it.toEntity(sessionId)) }
+    }
+
+    suspend fun findTrip(id: String): Trip? = database.dutyDao().findTrip(id)?.toDomain()
+
+    suspend fun updateTripMeasurement(id: String, actualDistanceMeters: Long, chargeableDistanceMeters: Long, lowSpeedSeconds: Long, meteredFareYen: Long) {
+        database.dutyDao().updateTrip(id, null, TripStatus.ACTIVE.name, lowSpeedSeconds, false, actualDistanceMeters, chargeableDistanceMeters, meteredFareYen, meteredFareYen)
+    }
+
+    suspend fun finishTrip(trip: Trip, status: TripStatus, revenueIncluded: Boolean) {
+        database.dutyDao().updateTrip(trip.id, trip.dropoffAt, status.name, trip.lowSpeedSeconds, revenueIncluded, trip.actualDistanceMeters, trip.chargeableDistanceMeters, trip.meteredFareYen, trip.totalFareYen)
+    }
 }
 
-private fun Trip.toEntity(sessionId: String) = TripEntity(id, sessionId, pickupAt, dropoffAt, pickupPlace.latitude(), pickupPlace.longitude(), pickupPlace.accuracy(), pickupPlace.recordedAt(), pickupPlace.address(), pickupPlace.precision(), pickupPlace.sourceName(), dropoffPlace.latitude(), dropoffPlace.longitude(), dropoffPlace.accuracy(), dropoffPlace.recordedAt(), dropoffPlace.address(), dropoffPlace.precision(), dropoffPlace.sourceName(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, paymentMethod.name, note, status.name, lowSpeedSeconds, revenueIncluded)
+private fun Trip.toEntity(sessionId: String) = TripEntity(id, sessionId, pickupAt, dropoffAt, pickupPlace.latitude(), pickupPlace.longitude(), pickupPlace.accuracy(), pickupPlace.recordedAt(), pickupPlace.address(), pickupPlace.precision(), pickupPlace.sourceName(), dropoffPlace.latitude(), dropoffPlace.longitude(), dropoffPlace.accuracy(), dropoffPlace.recordedAt(), dropoffPlace.address(), dropoffPlace.precision(), dropoffPlace.sourceName(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, paymentMethod.name, note, status.name, lowSpeedSeconds, revenueIncluded, serviceDate, tripNumber, actualDistanceMeters, chargeableDistanceMeters, meteredFareYen, totalFareYen, fareInitialDistanceMeters, fareInitialFareYen, fareDistanceIncrementMeters, fareDistanceIncrementFareYen, fareLowSpeedLimitKmh, fareLowSpeedTimeIncrementSeconds)
 
-private fun TripEntity.toDomain() = Trip(id, pickupAt, dropoffAt, pickupPlace(), dropoffPlace(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, PaymentMethod.valueOf(paymentMethod), note, TripStatus.valueOf(status), lowSpeedSeconds, revenueIncluded)
+private fun TripEntity.toDomain() = Trip(id = id, pickupAt = pickupAt, dropoffAt = dropoffAt, pickupPlace = pickupPlace(), dropoffPlace = dropoffPlace(), passengerCount = passengerCount, operatingDistanceMeters = operatingDistanceMeters, fareYen = fareYen, additionalChargeYen = additionalChargeYen, paymentMethod = PaymentMethod.valueOf(paymentMethod), note = note, status = TripStatus.valueOf(status), lowSpeedSeconds = lowSpeedSeconds, revenueIncluded = revenueIncluded, serviceDate = serviceDate, tripNumber = tripNumber, actualDistanceMeters = actualDistanceMeters, chargeableDistanceMeters = chargeableDistanceMeters, meteredFareYen = meteredFareYen, totalFareYen = totalFareYen, fareInitialDistanceMeters = fareInitialDistanceMeters, fareInitialFareYen = fareInitialFareYen, fareDistanceIncrementMeters = fareDistanceIncrementMeters, fareDistanceIncrementFareYen = fareDistanceIncrementFareYen, fareLowSpeedLimitKmh = fareLowSpeedLimitKmh, fareLowSpeedTimeIncrementSeconds = fareLowSpeedTimeIncrementSeconds)
 
 private fun DutyEvent.toEntity(sessionId: String) = DutyEventEntity(id, sessionId, type.name, occurredAt, place?.latitude, place?.longitude, place?.accuracyMeters, place?.recordedAt, place?.addressText, place?.locationPrecision?.name, place?.source?.name, safetyRoadModeChange?.from?.name, safetyRoadModeChange?.to?.name, note)
 

@@ -12,10 +12,12 @@ import java.time.Duration
 data class MeasurementAccumulation(
     val chargeableDistanceMeters: Long,
     val lowSpeedSeconds: Long,
+    val actualDistanceMeters: Long = 0,
 )
 
 class TripMeasurementAccumulator(private val fareRule: FareRule) {
     private var distanceMeters = 0.0
+    private var actualDistanceMeters = 0.0
     private var lowSpeedDuration = Duration.ZERO
 
     fun add(previous: DrivingSample, current: DrivingSample, distanceOnly: Boolean = false): MeasurementAccumulation {
@@ -25,6 +27,9 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
             val speedMps = current.speedMps ?: monotonicElapsed(previous, current)
                 ?.takeIf { it > Duration.ZERO }
                 ?.let { distance / it.toNanos() * 1_000_000_000.0 }
+            if (elapsed != null && !elapsed.isZero && speedMps != null) {
+                actualDistanceMeters += distance
+            }
             if (distanceOnly && elapsed != null && !elapsed.isZero && speedMps != null) {
                 distanceMeters += distance
             } else if (elapsed != null && !elapsed.isZero && speedMps != null && speedMps * 3.6 < fareRule.lowSpeedLimitKmh) {
@@ -33,7 +38,7 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
                 distanceMeters += distance
             }
         }
-        return MeasurementAccumulation(distanceMeters.roundToLong(), lowSpeedDuration.seconds)
+        return MeasurementAccumulation(distanceMeters.roundToLong(), lowSpeedDuration.seconds, actualDistanceMeters.roundToLong())
     }
 
     private fun elapsedBetween(previous: DrivingSample, current: DrivingSample): Duration? {

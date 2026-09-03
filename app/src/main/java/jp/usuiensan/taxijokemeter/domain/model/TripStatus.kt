@@ -1,3 +1,3 @@
 package jp.usuiensan.taxijokemeter.domain.model
 
-enum class TripStatus { COMPLETED, VOIDED }
+enum class TripStatus { ACTIVE, COMPLETED, VOIDED }

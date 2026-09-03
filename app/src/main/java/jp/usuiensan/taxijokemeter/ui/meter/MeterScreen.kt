@@ -109,9 +109,14 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
         Column(modifier = Modifier.fillMaxWidth()) {
             if (runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE) {
                 MeterButton("出庫", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.DEPART) })
-            } else if (runtime.meterState == MeterState.EMPTY || runtime.menu == MeterMenu.EMPTY_MENU) {
+            } else if (runtime.menu == MeterMenu.EMPTY_MENU) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Text("メニュー", color = MeterWhite)
+                    Text("戻る", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.BACK) })
+                }
+            } else if (runtime.meterState == MeterState.EMPTY) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Text("メニュー", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.MENU) })
                     Text("入庫", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.ARRIVE) })
                 }
             } else if (runtime.meterState == MeterState.PAYMENT) {

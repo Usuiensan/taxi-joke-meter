@@ -5,7 +5,7 @@ import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 enum class DutyLifecycle { BEFORE_DEPARTURE, ACTIVE, ENDED }
 enum class MeterState { EMPTY, OCCUPIED, PAYMENT, DEADHEAD }
 enum class DutyActivity { WORKING, BREAK }
-enum class MeterAction { DEPART, EMPTY, OCCUPIED, PAYMENT, DEADHEAD, BREAK, RESUME, ARRIVE }
+enum class MeterAction { DEPART, EMPTY, OCCUPIED, PAYMENT, DEADHEAD, BREAK, RESUME, ARRIVE, MENU, BACK }
 enum class MeterMenu { NONE, EMPTY_MENU }
 
 data class MeterRuntimeState(
@@ -34,6 +34,8 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
             MeterAction.BREAK -> state.copy(dutyActivity = DutyActivity.BREAK, menu = MeterMenu.NONE)
             MeterAction.RESUME -> state.copy(dutyActivity = DutyActivity.WORKING, menu = MeterMenu.NONE)
             MeterAction.ARRIVE -> state.copy(dutyLifecycle = DutyLifecycle.ENDED, menu = MeterMenu.NONE)
+            MeterAction.MENU -> state.copy(menu = MeterMenu.EMPTY_MENU)
+            MeterAction.BACK -> state.copy(menu = MeterMenu.NONE)
         }
         return state
     }

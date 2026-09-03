@@ -28,6 +28,18 @@ class MeterStateMachineTest {
         assertEquals(MeterState.EMPTY, machine.state.meterState)
     }
 
+    @Test fun menuKeepsEmptyStateAndBackClosesMenu() {
+        val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE))
+
+        machine.dispatch(MeterAction.MENU)
+        assertEquals(MeterState.EMPTY, machine.state.meterState)
+        assertEquals(MeterMenu.EMPTY_MENU, machine.state.menu)
+
+        machine.dispatch(MeterAction.BACK)
+        assertEquals(MeterState.EMPTY, machine.state.meterState)
+        assertEquals(MeterMenu.NONE, machine.state.menu)
+    }
+
     @Test fun activityAndRoadModeAreSeparateAxes() {
         val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE))
         machine.dispatch(MeterAction.BREAK)

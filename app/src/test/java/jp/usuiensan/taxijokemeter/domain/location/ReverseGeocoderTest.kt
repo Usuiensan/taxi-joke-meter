@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ReverseGeocoderTest {
     @Test
-    fun mapsAddressFieldsAndLeavesFeatureNameUnsetWithoutSafeEvidence() {
+    fun mapsJapaneseRoadAddressAndFacility() {
         val result = mapReverseGeocode(
             ReverseGeocodeAddress(
                 canonicalAddress = "東京都豊島区西池袋1丁目1番1号",
@@ -30,10 +30,34 @@ class ReverseGeocoderTest {
 
         assertEquals("東京都豊島区西池袋1丁目1番1号", result?.canonicalAddress)
         assertEquals("豊島区西池袋1丁目1番1号", result?.reportAddress)
-        assertNull(result?.landmarkName)
+        assertEquals("池袋駅", result?.landmarkName)
         assertNull(result?.landmarkDetail)
         assertEquals("西池袋通り", result?.roadName)
         assertEquals("豊島区西池袋1丁目", result?.areaText)
+        assertEquals("池袋駅", result?.facilityName)
+    }
+
+    @Test
+    fun japaneseAddressUsesJapaneseComponentsWithoutDuplicationOrEnglishFallback() {
+        assertEquals("千代田区千代田1丁目1番", japaneseAddress("千代田区", "千代田1丁目", "1番", "Tokyo Chiyoda"))
+        assertEquals("平塚市土屋1038", japaneseAddress("平塚市", "土屋", "1038", null))
+        assertNull(japaneseAddress("Chiyoda City", "1-Chome", "", "Tokyo"))
+    }
+
+    @Test
+    fun englishRoadIsDroppedButJapaneseAddressRemains() {
+        val result = mapReverseGeocode(
+            ReverseGeocodeAddress("英語住所", "秦野市南矢名1丁目12", "1-Chome", null, roadName = "Street XYZ", areaText = "秦野市南矢名1丁目12"),
+        )
+        assertNull(result?.roadName)
+        assertEquals("秦野市南矢名1丁目12", result?.areaText)
+    }
+
+    @Test
+    fun featureNameIsUsedAsRoadOnlyWhenItClearlyNamesAJapaneseRoad() {
+        assertEquals("国道1号", japaneseRoadName(null, "国道1号"))
+        assertEquals("内堀通り", japaneseRoadName("内堀通り", "皇居"))
+        assertNull(japaneseRoadName(null, "千代田区"))
     }
 
     @Test

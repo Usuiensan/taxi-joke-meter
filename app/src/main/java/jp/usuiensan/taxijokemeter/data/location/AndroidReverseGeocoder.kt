@@ -6,11 +6,13 @@ import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocodeAddress
 import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocodeResult
 import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocoder
 import jp.usuiensan.taxijokemeter.domain.location.mapReverseGeocode
+import jp.usuiensan.taxijokemeter.domain.location.japaneseAddress
+import jp.usuiensan.taxijokemeter.domain.location.japaneseRoadName
 import kotlinx.coroutines.CancellationException
 import java.util.Locale
 
 class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
-    private val geocoder = Geocoder(context, Locale.getDefault())
+    private val geocoder = Geocoder(context, Locale.JAPAN)
 
     override suspend fun reverseGeocode(latitude: Double, longitude: Double): ReverseGeocodeResult? {
         return try {
@@ -19,16 +21,11 @@ class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
             mapReverseGeocode(
                 ReverseGeocodeAddress(
                     canonicalAddress = address.getAddressLine(0),
-                    reportAddress = listOf(address.locality, address.thoroughfare, address.subThoroughfare)
-                        .filterNot { it.isNullOrBlank() }
-                        .joinToString(""),
+                    reportAddress = japaneseAddress(address.locality, address.subLocality, address.subThoroughfare, address.getAddressLine(0)),
                     featureName = address.featureName,
                     featureDetail = null,
-                    roadName = address.thoroughfare ?: address.featureName,
-                    areaText = listOf(address.locality, address.subLocality, address.subThoroughfare)
-                        .filterNot { it.isNullOrBlank() }
-                        .joinToString("")
-                        .takeIf(String::isNotEmpty),
+                    roadName = japaneseRoadName(address.thoroughfare, address.featureName),
+                    areaText = japaneseAddress(address.locality, address.subLocality, address.subThoroughfare, address.getAddressLine(0)),
                 ),
             )
         } catch (exception: CancellationException) {

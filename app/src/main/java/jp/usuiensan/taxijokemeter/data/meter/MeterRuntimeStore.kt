@@ -57,6 +57,7 @@ enum class CurrentLocationStatus { LOADING, AVAILABLE, UNAVAILABLE }
 data class CurrentLocationDisplayState(
     val roadName: String? = null,
     val areaText: String? = null,
+    val facilityName: String? = null,
     val status: CurrentLocationStatus = CurrentLocationStatus.LOADING,
 )
 

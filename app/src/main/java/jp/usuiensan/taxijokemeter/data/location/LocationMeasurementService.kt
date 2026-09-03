@@ -98,10 +98,10 @@ class LocationMeasurementService : Service() {
                     lastGeocodedLongitude = longitude
                     geocodeInFlight = false
                     MeterRuntimeStore.update { state ->
-                        state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null)) {
+                        state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null && result.facilityName == null)) {
                             CurrentLocationDisplayState(status = CurrentLocationStatus.UNAVAILABLE)
                         } else {
-                            CurrentLocationDisplayState(result.roadName, result.areaText, CurrentLocationStatus.AVAILABLE)
+                            CurrentLocationDisplayState(result.roadName, result.areaText, result.facilityName, CurrentLocationStatus.AVAILABLE)
                         })
                     }
                 }

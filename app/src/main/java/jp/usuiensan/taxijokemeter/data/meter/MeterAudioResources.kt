@@ -6,10 +6,10 @@ object MeterAudioResources {
     private val resourceNames = mapOf(
         MeterAudioCue.OCCUPIED to "meter_occupied",
         MeterAudioCue.PAYMENT to "meter_payment",
-        MeterAudioCue.OVERSPEED to "safety_notification_beep",
+        MeterAudioCue.OVERSPEED to "safety_notification_beep_mp3",
         MeterAudioCue.RETURN_TO_GENERAL to "roadmode_return_general",
-        MeterAudioCue.HARD_ACCELERATION to "safety_notification_beep",
-        MeterAudioCue.HARD_DECELERATION to "safety_notification_beep",
+        MeterAudioCue.HARD_ACCELERATION to "safety_notification_beep_mp3",
+        MeterAudioCue.HARD_DECELERATION to "safety_notification_beep_mp3",
     )
 
     internal fun resourceName(cue: MeterAudioCue): String? = resourceNames[cue]

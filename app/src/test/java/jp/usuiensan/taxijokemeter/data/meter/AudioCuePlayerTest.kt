@@ -185,8 +185,8 @@ class AudioCuePlayerTest {
     }
 
     @Test fun safetyCuesUseTheSharedNotificationBeepResource() {
-        assertEquals("safety_notification_beep", MeterAudioResources.resourceName(MeterAudioCue.OVERSPEED))
-        assertEquals("safety_notification_beep", MeterAudioResources.resourceName(MeterAudioCue.HARD_ACCELERATION))
-        assertEquals("safety_notification_beep", MeterAudioResources.resourceName(MeterAudioCue.HARD_DECELERATION))
+        assertEquals("safety_notification_beep_mp3", MeterAudioResources.resourceName(MeterAudioCue.OVERSPEED))
+        assertEquals("safety_notification_beep_mp3", MeterAudioResources.resourceName(MeterAudioCue.HARD_ACCELERATION))
+        assertEquals("safety_notification_beep_mp3", MeterAudioResources.resourceName(MeterAudioCue.HARD_DECELERATION))
     }
 }

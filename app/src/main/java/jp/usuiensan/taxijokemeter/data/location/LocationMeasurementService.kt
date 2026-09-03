@@ -144,7 +144,9 @@ class LocationMeasurementService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_START) {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "Measurement commands must run on the main looper" }
+        val action = intent?.action ?: return START_NOT_STICKY
+        if (action == ACTION_START) {
             runtimeState = MeasurementRuntimeState(DrivingSampleState(
                 intent.getStringExtra(EXTRA_SESSION_ID) ?: return START_NOT_STICKY,
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: RoadMode.GENERAL.name),
@@ -171,7 +173,7 @@ class LocationMeasurementService : Service() {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, listener, Looper.getMainLooper())
             healthHandler.post(healthWatchdog)
             Log.i(TAG, "GPS状態=計測開始 sessionId=${runtimeState.sampleState.dutySessionId}")
-        } else if (intent?.action == ACTION_UPDATE_STATE) {
+        } else if (action == ACTION_UPDATE_STATE) {
             if (!MeasurementDebugStore.snapshot.value.running) return START_NOT_STICKY
             runtimeState = runtimeState.updateState(
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: runtimeState.sampleState.roadMode.name),
@@ -180,7 +182,7 @@ class LocationMeasurementService : Service() {
             fareMeasurement?.setOccupancyState(runtimeState.sampleState.occupancyState)
             MeasurementDebugStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode.name) }
             MeterRuntimeStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode) }
-        } else if (intent?.action == ACTION_BEGIN_FARE) {
+        } else if (action == ACTION_BEGIN_FARE) {
             if (fareMeasurement?.isActive == true) return START_NOT_STICKY
             val rule = intent.fareRuleOrNull() ?: fareRuleOrNull() ?: return START_NOT_STICKY
             fareRule = rule
@@ -191,7 +193,7 @@ class LocationMeasurementService : Service() {
             session.setOccupancyState(OccupancyState.OCCUPIED)
             MeterRuntimeStore.update { it.copy(meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) }
             Log.i(TAG, "料金計測=開始")
-        } else if (intent?.action == ACTION_END_FARE) {
+        } else if (action == ACTION_END_FARE) {
             val result = fareMeasurement?.end()
             result?.let { accumulation -> fareRuleOrNull()?.let { rule ->
                 val fare = FareCalculator.calculate(rule, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds)
@@ -199,7 +201,12 @@ class LocationMeasurementService : Service() {
                 MeterRuntimeStore.snapshot.value.currentTripId?.let { tripId -> scope.launch { DutyRecordRepository(database).updateTripMeasurement(tripId, accumulation.actualDistanceMeters, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds, fare) } }
             } }
             Log.i(TAG, "料金計測=終了 結果=${result ?: "未開始"}")
-        }
+        } else return START_NOT_STICKY
+        MeasurementDebugStore.update { it.copy(processedCommands = it.processedCommands + MeasurementCommandDebug(
+            action,
+            runtimeState.sampleState.occupancyState,
+            fareMeasurement?.isActive == true,
+        )) }
         return START_NOT_STICKY
     }
 

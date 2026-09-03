@@ -69,3 +69,15 @@
 ### Conclusion
 
 - Repeated REST idempotence, ordered immediate Controller persistence through PAYMENT/TOTAL/VOIDED, fractional REST distance, and single-owner main-looper runtime-state updates are verified by the focused regressions and completed builds.
+
+## Fix round 4 verification (2026-09-04)
+
+- `LocationMeasurementService.onStartCommand` の状態遷移を main looper 上の同期処理として明示し、command ごとの処理完了後に occupancy state と fare active 状態を `MeasurementDebugStore` へ記録するようにした。
+- `MeterControllerOperationOrderingTest.immediateOccupiedPaymentTotalIsProcessedByMeasurementServiceInOrder` は、Controller wrapper の送信前記録を廃止し、実サービスが処理した `UPDATE_STATE(OCCUPIED) → BEGIN_FARE → UPDATE_STATE(EMPTY) → END_FARE → UPDATE_STATE(EMPTY)` と各処理後状態を検証する。
+- RED: `.\gradlew.bat :app:connectedDebugAndroidTest --project-prop 'android.testInstrumentationRunnerArguments.class=jp.usuiensan.taxijokemeter.data.meter.MeterControllerOperationOrderingTest' --no-daemon` — expected failure at `compileDebugAndroidTestKotlin`; `MeasurementCommandDebug` and `processedCommands` were unresolved before the production seam existed (`BUILD FAILED in 27s`, exit 1).
+- Focused ordering instrumentation GREEN: `.\gradlew.bat :app:connectedDebugAndroidTest --project-prop 'android.testInstrumentationRunnerArguments.class=jp.usuiensan.taxijokemeter.data.meter.MeterControllerOperationOrderingTest' --no-daemon` — PASS (`BUILD SUCCESSFUL in 58s`, exit 0); all 5 tests passed on `Pixel_8(AVD) - 17` and `Pixel 10a - 17`.
+- Focused unit: `.\gradlew.bat :app:testDebugUnitTest --tests 'jp.usuiensan.taxijokemeter.data.meter.*' --tests 'jp.usuiensan.taxijokemeter.data.location.*' --tests 'jp.usuiensan.taxijokemeter.domain.measurement.*' --tests 'jp.usuiensan.taxijokemeter.domain.meter.*' --no-daemon` — PASS (`BUILD SUCCESSFUL in 27s`, exit 0).
+- Full unit/build: `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon` — PASS (`BUILD SUCCESSFUL in 17s`, exit 0).
+- Full instrumentation: `.\gradlew.bat :app:connectedDebugAndroidTest --no-daemon` — PASS (`BUILD SUCCESSFUL in 32s`, exit 0); 27 tests passed with 0 failures/errors/skips on each of `Pixel_8(AVD) - 17` and `Pixel 10a - 17`.
+- `git diff --check` — PASS (exit 0); only the existing LF/CRLF conversion warnings were emitted.
+- Existing KSP version and Android 37 platform-location warnings were emitted unchanged. No UI, migration, external API, SDK, or unrelated file was modified.

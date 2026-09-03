@@ -11,6 +11,7 @@ import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettings
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.data.location.LocationMeasurementService
+import jp.usuiensan.taxijokemeter.data.location.MeasurementCommandDebug
 import jp.usuiensan.taxijokemeter.data.location.MeasurementDebugSnapshot
 import jp.usuiensan.taxijokemeter.data.location.MeasurementDebugStore
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
@@ -29,7 +30,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.CopyOnWriteArrayList
 
 @RunWith(AndroidJUnit4::class)
 class MeterControllerOperationOrderingTest {
@@ -101,7 +101,7 @@ class MeterControllerOperationOrderingTest {
         assertEquals(TripStatus.VOIDED.name, database.dutyDao().findTrips(sessionId).single().status)
     }
 
-    @Test fun immediateOccupiedPaymentTotalSendsMeasurementCommandsInOrder() = runBlocking {
+    @Test fun immediateOccupiedPaymentTotalIsProcessedByMeasurementServiceInOrder() = runBlocking {
         context.delegateServiceStarts = true
         MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = sessionId))
         val controller = MeterController(context, context.databaseName)
@@ -116,16 +116,16 @@ class MeterControllerOperationOrderingTest {
             writableDatabase.endTransaction()
         }
 
-        waitUntil { context.measurementCommands.size == 5 }
+        waitUntil { MeasurementDebugStore.snapshot.value.processedCommands.size == 5 }
         assertEquals(
             listOf(
-                "${LocationMeasurementService.ACTION_UPDATE_STATE}:${OccupancyState.OCCUPIED.name}",
-                "${LocationMeasurementService.ACTION_BEGIN_FARE}:null",
-                "${LocationMeasurementService.ACTION_UPDATE_STATE}:${OccupancyState.EMPTY.name}",
-                "${LocationMeasurementService.ACTION_END_FARE}:null",
-                "${LocationMeasurementService.ACTION_UPDATE_STATE}:${OccupancyState.EMPTY.name}",
+                MeasurementCommandDebug(LocationMeasurementService.ACTION_UPDATE_STATE, OccupancyState.OCCUPIED, false),
+                MeasurementCommandDebug(LocationMeasurementService.ACTION_BEGIN_FARE, OccupancyState.OCCUPIED, true),
+                MeasurementCommandDebug(LocationMeasurementService.ACTION_UPDATE_STATE, OccupancyState.EMPTY, true),
+                MeasurementCommandDebug(LocationMeasurementService.ACTION_END_FARE, OccupancyState.EMPTY, false),
+                MeasurementCommandDebug(LocationMeasurementService.ACTION_UPDATE_STATE, OccupancyState.EMPTY, false),
             ),
-            context.measurementCommands.toList(),
+            MeasurementDebugStore.snapshot.value.processedCommands,
         )
     }
 
@@ -159,13 +159,11 @@ class MeterControllerOperationOrderingTest {
 
 private class IsolatedControllerContext(base: Context, val databaseName: String) : ContextWrapper(base) {
     var delegateServiceStarts = false
-    val measurementCommands = CopyOnWriteArrayList<String>()
 
     override fun getApplicationContext(): Context = this
     override fun getDatabasePath(name: String) = baseContext.getDatabasePath(databaseName)
     override fun getSharedPreferences(name: String, mode: Int) = baseContext.getSharedPreferences("$databaseName-$name", mode)
     override fun startService(service: Intent): ComponentName? {
-        measurementCommands += "${service.action}:${service.getStringExtra(LocationMeasurementService.EXTRA_OCCUPANCY_STATE)}"
         return if (delegateServiceStarts) baseContext.startService(service)
         else ComponentName(baseContext.packageName, service.component?.className ?: "test")
     }

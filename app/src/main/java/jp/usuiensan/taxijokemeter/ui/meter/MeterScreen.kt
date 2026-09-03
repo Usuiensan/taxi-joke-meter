@@ -300,7 +300,7 @@ internal fun stateLabel(state: MeterState) = when (state) {
     MeterState.DEADHEAD -> "回送"
 }
 
-internal fun emptyButtonAction(state: MeterState) = if (state == MeterState.EMPTY) MeterAction.MENU else MeterAction.EMPTY
+internal fun emptyButtonAction(state: MeterState) = MeterAction.EMPTY
 
 internal fun showsDateTime(state: MeterState, beforeDeparture: Boolean) =
     beforeDeparture || state == MeterState.EMPTY || state == MeterState.DEADHEAD
@@ -431,10 +431,9 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
             } else {
                 MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, slotModifier, if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = when {
                 runtime.menu == MeterMenu.EMPTY_MENU && label == "回送" -> ({ controller.dispatch(MeterAction.DEADHEAD) })
-                runtime.menu == MeterMenu.EMPTY_MENU && label == "戻る" -> ({ controller.dispatch(MeterAction.BACK) })
                 runtime.menu == MeterMenu.EMPTY_MENU && (label == "レポート" || label == "再発行") -> ({})
                 runtime.menu == MeterMenu.EMPTY_MENU && label == "デバッグ" -> ({ controller.dispatch(MeterAction.BACK); onOpenDebug() })
-                runtime.meterState == MeterState.EMPTY && runtime.menu == MeterMenu.NONE && label == "運賃制" -> onOpenFareSettings
+                runtime.meterState == MeterState.EMPTY && label == "運賃制" -> onOpenFareSettings
                 runtime.meterState == MeterState.DEADHEAD && label == "解除" -> ({ controller.dispatch(MeterAction.RELEASE) })
                 runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL -> ({})
                 else -> null
@@ -445,8 +444,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
 }
 
 internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<String?> = when {
-    state == MeterState.EMPTY && emptyMenu -> listOf("回送", "レポート", "再発行", "デバッグ", "戻る")
-    state == MeterState.EMPTY -> listOf("累計", "運賃制", null, null, "高速")
+    state == MeterState.EMPTY -> listOf("回送", "レポート", "再発行", "デバッグ", "運賃制")
     else -> when (state) {
     MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地")
     MeterState.PAYMENT, MeterState.TOTAL -> listOf("明細", "置換", "立替", "チケット", "定額")

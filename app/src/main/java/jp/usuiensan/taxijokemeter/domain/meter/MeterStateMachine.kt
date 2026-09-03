@@ -13,7 +13,7 @@ data class MeterRuntimeState(
     val meterState: MeterState = MeterState.EMPTY,
     val dutyActivity: DutyActivity = DutyActivity.WORKING,
     val roadMode: RoadMode = RoadMode.GENERAL,
-    val menu: MeterMenu = MeterMenu.NONE,
+    val menu: MeterMenu = MeterMenu.EMPTY_MENU,
 )
 
 class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
@@ -22,10 +22,10 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
 
     fun dispatch(action: MeterAction): MeterRuntimeState {
         state = when (action) {
-            MeterAction.DEPART -> state.copy(dutyLifecycle = DutyLifecycle.ACTIVE, meterState = MeterState.EMPTY, menu = MeterMenu.NONE)
+            MeterAction.DEPART -> state.copy(dutyLifecycle = DutyLifecycle.ACTIVE, meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
             MeterAction.EMPTY -> when (state.meterState) {
                 MeterState.EMPTY -> state.copy(menu = MeterMenu.EMPTY_MENU)
-                MeterState.OCCUPIED, MeterState.TOTAL -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.NONE)
+                MeterState.OCCUPIED, MeterState.TOTAL -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
                 MeterState.PAYMENT -> state
                 MeterState.DEADHEAD -> state
             }
@@ -42,7 +42,7 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
             }
             MeterAction.DEADHEAD -> state.copy(meterState = MeterState.DEADHEAD, menu = MeterMenu.NONE)
             MeterAction.RELEASE -> if (state.meterState == MeterState.DEADHEAD) {
-                state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.NONE)
+                state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
             } else {
                 state
             }
@@ -54,7 +54,7 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
             } else {
                 state
             }
-            MeterAction.BACK -> state.copy(menu = MeterMenu.NONE)
+            MeterAction.BACK -> if (state.meterState == MeterState.EMPTY) state.copy(menu = MeterMenu.EMPTY_MENU) else state.copy(menu = MeterMenu.NONE)
         }
         return state
     }

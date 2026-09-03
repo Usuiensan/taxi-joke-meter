@@ -29,7 +29,7 @@ data class MeterRuntimeSnapshot(
     val latestSpeedMps: Double? = null,
     val latestAccuracyMeters: Double? = null,
     val savedSampleCount: Int = 0,
-    val menu: MeterMenu = MeterMenu.NONE,
+    val menu: MeterMenu = MeterMenu.EMPTY_MENU,
     val dutySessionId: String? = null,
     val tripStartedAt: java.time.Instant? = null,
     val chargeProgress: ChargeProgressUiState? = null,

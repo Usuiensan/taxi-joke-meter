@@ -65,7 +65,6 @@ fun AppShell() {
         when {
             showSettings -> { showSettings = false; showMeter = true }
             showDebug -> { showDebug = false; showMeter = true }
-            showMeter && meterRuntime.menu == jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU -> meterController.dispatch(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.BACK)
             showMeter -> activity.finish()
             else -> showMeter = true
         }

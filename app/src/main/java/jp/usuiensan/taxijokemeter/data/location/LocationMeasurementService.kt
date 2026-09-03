@@ -147,7 +147,7 @@ class LocationMeasurementService : Service() {
             fareMeasurement = FareMeasurementSession(fareRule)
             savedSampleCount.set(0)
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, roadMode = runtimeState.sampleState.roadMode.name))
-            MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY, roadMode = runtimeState.sampleState.roadMode) }
+            MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY, menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU, roadMode = runtimeState.sampleState.roadMode) }
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 Log.w(TAG, "GPS状態=権限なし")
                 stopSelf()

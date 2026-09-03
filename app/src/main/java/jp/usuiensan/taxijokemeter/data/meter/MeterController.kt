@@ -51,7 +51,7 @@ class MeterController(private val context: Context) {
                 fareRule = FareRuleStore(context).load()
                 val id = measurement.start(after.roadMode, jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY, fareRule)
                 sessionId = id
-                MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, meterState = after.meterState, dutySessionId = id) }
+                MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, meterState = after.meterState, menu = after.menu, dutySessionId = id) }
                 event(DutyEventType.DEPARTURE)
             }
             MeterAction.OCCUPIED -> {
@@ -59,7 +59,7 @@ class MeterController(private val context: Context) {
                     fareRule = FareRuleStore(context).load()
                     val now = Instant.now()
                     trip = Trip(UUID.randomUUID().toString(), now, null, null, null, 0, 0, 0, 0, jp.usuiensan.taxijokemeter.domain.model.PaymentMethod.UNKNOWN, null)
-                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) }
+                    MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) }
                     measurement.beginFareMeasurement(); event(DutyEventType.PICKUP)
                 } else if (before.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.PAYMENT) {
                     MeterRuntimeStore.update { it.copy(meterState = after.meterState) }

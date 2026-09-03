@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
@@ -46,6 +47,9 @@ private val MeterBlack = Color(0xFF080B0E)
 private val MeterBlue = Color(0xFF087FA5)
 private val MeterWhite = Color(0xFFF0F1ED)
 private val MeterRed = Color(0xFFE53B35)
+private val DistanceGreen = Color(0xFF57B957)
+private val TimeBlue = Color(0xFF2A9FD6)
+private val IconBlack = Color(0xFF0A0A0A)
 private val MeterLogicalWidth = 900.dp
 private val MeterLogicalHeight = 400.dp
 
@@ -106,7 +110,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 @Composable
 private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController) {
     Box(
-        modifier = modifier.fillMaxWidth().padding(12.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.BottomStart,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -149,20 +153,34 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                             fontSize = 20.sp,
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 8.dp),
                         )
-                        Text(
-                            "${runtime.fareYen.formatYen()}円",
-                            color = MeterWhite,
-                            style = TextStyle(
-                                fontSize = 76.sp,
-                                lineHeight = 84.sp,
-                                fontWeight = FontWeight.Light,
-                                platformStyle = PlatformTextStyle(includeFontPadding = true),
-                            ),
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp),
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Visible,
-                        )
+                        val fare = formatFareAmount(runtime.fareYen)
+                        Row(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 10.dp),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            Text(
+                                fare.number,
+                                color = MeterWhite,
+                                style = TextStyle(
+                                    fontSize = 76.sp,
+                                    lineHeight = 82.sp,
+                                    fontWeight = FontWeight.Light,
+                                    platformStyle = PlatformTextStyle(includeFontPadding = true),
+                                ),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Clip,
+                            )
+                            Text(
+                                fare.unit,
+                                color = MeterWhite,
+                                fontSize = 26.sp,
+                                lineHeight = 32.sp,
+                                modifier = Modifier.padding(bottom = 7.dp),
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
                     }
                 }
             }
@@ -195,10 +213,11 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
         val iconOffset = travel * fraction.coerceIn(0f, 1f)
         Canvas(Modifier.fillMaxWidth().height(28.dp)) {
             val y = size.height / 2
-            val progressColor = if (mode == ChargeProgressMode.TIME) Color(0xFF2A9FD6) else Color(0xFF57B957)
+            val progressColor = if (mode == ChargeProgressMode.TIME) TimeBlue else DistanceGreen
             val radius = 14f
             drawRoundRect(MeterWhite, topLeft = Offset(0f, y - radius), size = androidx.compose.ui.geometry.Size(size.width, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
-            drawRoundRect(progressColor, topLeft = Offset(0f, y - radius), size = androidx.compose.ui.geometry.Size(size.width * fraction.coerceIn(0f, 1f), radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
+            val filledWidth = maxOf(size.width * fraction.coerceIn(0f, 1f), iconSize.toPx() / 2f)
+            drawRoundRect(progressColor, topLeft = Offset(0f, y - radius), size = androidx.compose.ui.geometry.Size(filledWidth, radius * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius))
             repeat(11) { index ->
                 val x = size.width * index / 10f
                 drawLine(Color(0xFF647078), Offset(x, y - 8f), Offset(x, y + 8f), strokeWidth = 2f)
@@ -207,7 +226,7 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
         Box(
             Modifier.requiredSize(iconSize)
                 .graphicsLayer { translationX = iconOffset.toPx() }
-                .background(if (mode == ChargeProgressMode.TIME) Color(0xFFE59A6C) else Color(0xFF67C94A), CircleShape)
+                .background(if (mode == ChargeProgressMode.TIME) TimeBlue else DistanceGreen, CircleShape)
                 .border(2.dp, MeterBlack, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
@@ -215,11 +234,16 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
                 painter = painterResource(if (mode == ChargeProgressMode.TIME) jp.usuiensan.taxijokemeter.R.drawable.charge_time_clock else jp.usuiensan.taxijokemeter.R.drawable.charge_distance_wheel),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
+                colorFilter = ColorFilter.tint(IconBlack),
                 modifier = Modifier.requiredSize(iconBodySize),
             )
         }
     }
 }
+
+internal data class FareAmountParts(val number: String, val unit: String)
+
+internal fun formatFareAmount(yen: Long) = FareAmountParts(yen.formatYen(), "円")
 
 private fun Long.formatYen() = "%,d".format(this)
 

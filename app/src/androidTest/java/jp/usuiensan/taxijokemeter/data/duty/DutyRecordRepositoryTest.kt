@@ -21,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.Assert.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 class DutyRecordRepositoryTest {
@@ -34,6 +35,21 @@ class DutyRecordRepositoryTest {
     }
 
     @After fun tearDown() = database.close()
+
+    @Test fun v9SchemaContainsReportFoundationTablesAndTripColumns() {
+        val db = database.openHelper.readableDatabase
+        assertEquals(9, db.version)
+        assertTrue(db.query("PRAGMA table_info(trips)").use { cursor ->
+            generateSequence { if (cursor.moveToNext()) cursor.getString(cursor.getColumnIndexOrThrow("name")) else null }.toList()
+                .containsAll(listOf("serviceDate", "tripNumber", "actualDistanceMeters", "chargeableDistanceMeters", "meteredFareYen", "totalFareYen", "fareInitialDistanceMeters", "fareInitialFareYen", "fareDistanceIncrementMeters", "fareDistanceIncrementFareYen", "fareLowSpeedLimitKmh", "fareLowSpeedTimeIncrementSeconds"))
+        })
+        assertTrue(tableExists(db, "trip_places"))
+        assertTrue(tableExists(db, "trip_charges"))
+        assertTrue(tableExists(db, "rest_intervals"))
+    }
+
+    private fun tableExists(db: androidx.sqlite.db.SupportSQLiteDatabase, table: String) =
+        db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(table)).use { it.moveToFirst() }
 
     @Test fun savesAndReloadsSessionTripsEventsAndUnresolvedPlace() = runBlocking {
         val now = Instant.parse("2026-09-03T00:00:00Z")

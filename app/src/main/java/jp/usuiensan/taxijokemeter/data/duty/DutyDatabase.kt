@@ -12,7 +12,7 @@ import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleEntity
 import jp.usuiensan.taxijokemeter.data.safety.SafetyEventDao
 import jp.usuiensan.taxijokemeter.data.safety.SafetyEventEntity
 
-@Database(entities = [DutySessionEntity::class, TripEntity::class, DutyEventEntity::class, DrivingSampleEntity::class, SafetyEventEntity::class], version = 8, exportSchema = false)
+@Database(entities = [DutySessionEntity::class, TripEntity::class, TripPlaceEntity::class, TripChargeEntity::class, RestIntervalEntity::class, DutyEventEntity::class, DrivingSampleEntity::class, SafetyEventEntity::class], version = 9, exportSchema = false)
 @TypeConverters(DutyConverters::class)
 abstract class DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao
@@ -21,7 +21,7 @@ abstract class DutyDatabase : RoomDatabase() {
 
     companion object {
         fun build(context: Context, databaseName: String = "duty.db"): DutyDatabase = Room.databaseBuilder(context, DutyDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -86,9 +86,39 @@ abstract class DutyDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.addColumnIfMissing("serviceDate", "TEXT")
+                db.addColumnIfMissing("tripNumber", "INTEGER")
+                db.addColumnIfMissing("actualDistanceMeters", "INTEGER NOT NULL DEFAULT 0")
+                db.addColumnIfMissing("chargeableDistanceMeters", "INTEGER NOT NULL DEFAULT 0")
+                db.addColumnIfMissing("meteredFareYen", "INTEGER NOT NULL DEFAULT 0")
+                db.addColumnIfMissing("totalFareYen", "INTEGER NOT NULL DEFAULT 0")
+                db.addColumnIfMissing("fareInitialDistanceMeters", "INTEGER")
+                db.addColumnIfMissing("fareInitialFareYen", "INTEGER")
+                db.addColumnIfMissing("fareDistanceIncrementMeters", "INTEGER")
+                db.addColumnIfMissing("fareDistanceIncrementFareYen", "INTEGER")
+                db.addColumnIfMissing("fareLowSpeedLimitKmh", "INTEGER")
+                db.addColumnIfMissing("fareLowSpeedTimeIncrementSeconds", "INTEGER")
+                db.execSQL("UPDATE trips SET actualDistanceMeters = operatingDistanceMeters, chargeableDistanceMeters = operatingDistanceMeters, meteredFareYen = fareYen, totalFareYen = fareYen + additionalChargeYen")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_trips_serviceDate_tripNumber ON trips(serviceDate, tripNumber)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS trip_places (id TEXT NOT NULL, tripId TEXT NOT NULL, type TEXT NOT NULL, sequence INTEGER NOT NULL, recordedAt INTEGER NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracyMeters REAL, canonicalAddress TEXT, reportAddress TEXT, landmarkName TEXT, landmarkDetail TEXT, locationPrecision TEXT, source TEXT, PRIMARY KEY(id), FOREIGN KEY(tripId) REFERENCES trips(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX index_trip_places_tripId ON trip_places(tripId)")
+                db.execSQL("CREATE UNIQUE INDEX index_trip_places_tripId_type_sequence ON trip_places(tripId, type, sequence)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS trip_charges (id TEXT NOT NULL, tripId TEXT NOT NULL, type TEXT NOT NULL, amountYen INTEGER NOT NULL, appliedAt INTEGER NOT NULL, label TEXT, PRIMARY KEY(id), FOREIGN KEY(tripId) REFERENCES trips(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX index_trip_charges_tripId ON trip_charges(tripId)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS rest_intervals (id TEXT NOT NULL, sessionId TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, startLatitude REAL, startLongitude REAL, startAccuracyMeters REAL, distanceMeters INTEGER NOT NULL, endReason TEXT, PRIMARY KEY(id), FOREIGN KEY(sessionId) REFERENCES duty_sessions(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX index_rest_intervals_sessionId ON rest_intervals(sessionId)")
+            }
+        }
+
         private fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean = query("PRAGMA table_info($table)").use { cursor ->
             val index = cursor.getColumnIndex("name")
             generateSequence { if (cursor.moveToNext()) cursor.getString(index) else null }.any { it == column }
+        }
+
+        private fun SupportSQLiteDatabase.addColumnIfMissing(column: String, definition: String) {
+            if (!hasColumn("trips", column)) execSQL("ALTER TABLE trips ADD COLUMN $column $definition")
         }
     }
 }

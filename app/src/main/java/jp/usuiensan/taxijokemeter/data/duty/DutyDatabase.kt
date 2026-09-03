@@ -103,12 +103,12 @@ abstract class DutyDatabase : RoomDatabase() {
                 db.execSQL("UPDATE trips SET actualDistanceMeters = operatingDistanceMeters, chargeableDistanceMeters = operatingDistanceMeters, meteredFareYen = fareYen, totalFareYen = fareYen + additionalChargeYen")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_trips_serviceDate_tripNumber ON trips(serviceDate, tripNumber)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS trip_places (id TEXT NOT NULL, tripId TEXT NOT NULL, type TEXT NOT NULL, sequence INTEGER NOT NULL, recordedAt INTEGER NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracyMeters REAL, canonicalAddress TEXT, reportAddress TEXT, landmarkName TEXT, landmarkDetail TEXT, locationPrecision TEXT, source TEXT, PRIMARY KEY(id), FOREIGN KEY(tripId) REFERENCES trips(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
-                db.execSQL("CREATE INDEX index_trip_places_tripId ON trip_places(tripId)")
-                db.execSQL("CREATE UNIQUE INDEX index_trip_places_tripId_type_sequence ON trip_places(tripId, type, sequence)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_trip_places_tripId ON trip_places(tripId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_trip_places_tripId_type_sequence ON trip_places(tripId, type, sequence)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS trip_charges (id TEXT NOT NULL, tripId TEXT NOT NULL, type TEXT NOT NULL, amountYen INTEGER NOT NULL, appliedAt INTEGER NOT NULL, label TEXT, PRIMARY KEY(id), FOREIGN KEY(tripId) REFERENCES trips(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
-                db.execSQL("CREATE INDEX index_trip_charges_tripId ON trip_charges(tripId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_trip_charges_tripId ON trip_charges(tripId)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS rest_intervals (id TEXT NOT NULL, sessionId TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, startLatitude REAL, startLongitude REAL, startAccuracyMeters REAL, distanceMeters INTEGER NOT NULL, endReason TEXT, PRIMARY KEY(id), FOREIGN KEY(sessionId) REFERENCES duty_sessions(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
-                db.execSQL("CREATE INDEX index_rest_intervals_sessionId ON rest_intervals(sessionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_rest_intervals_sessionId ON rest_intervals(sessionId)")
             }
         }
 

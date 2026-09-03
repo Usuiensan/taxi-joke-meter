@@ -174,9 +174,11 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                             Text(
                                 fare.unit,
                                 color = MeterWhite,
-                                fontSize = 26.sp,
-                                lineHeight = 32.sp,
-                                modifier = Modifier.padding(bottom = 7.dp),
+                                style = TextStyle(
+                                    fontSize = 26.sp,
+                                    lineHeight = 32.sp,
+                                    platformStyle = PlatformTextStyle(includeFontPadding = true),
+                                ),
                                 maxLines = 1,
                                 softWrap = false,
                             )

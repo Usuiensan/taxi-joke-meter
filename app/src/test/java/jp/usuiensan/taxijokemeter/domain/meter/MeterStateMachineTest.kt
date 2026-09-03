@@ -42,14 +42,20 @@ class MeterStateMachineTest {
         assertEquals(MeterState.EMPTY, machine.state.meterState)
     }
 
-    @Test fun emptyPressOpensMenuAndDeadheadReturnsToEmpty() {
+    @Test fun emptyPressOpensMenuAndDeadheadRequiresRelease() {
         val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE))
         machine.dispatch(MeterAction.EMPTY)
         assertEquals(MeterMenu.EMPTY_MENU, machine.state.menu)
         machine.dispatch(MeterAction.DEADHEAD)
         assertEquals(MeterState.DEADHEAD, machine.state.meterState)
         machine.dispatch(MeterAction.EMPTY)
+        machine.dispatch(MeterAction.OCCUPIED)
+        machine.dispatch(MeterAction.PAYMENT)
+        machine.dispatch(MeterAction.TOTAL)
+        assertEquals(MeterState.DEADHEAD, machine.state.meterState)
+        machine.dispatch(MeterAction.RELEASE)
         assertEquals(MeterState.EMPTY, machine.state.meterState)
+        assertEquals(DutyLifecycle.ACTIVE, machine.state.dutyLifecycle)
     }
 
     @Test fun paymentFromEmptyKeepsStateUnchanged() {

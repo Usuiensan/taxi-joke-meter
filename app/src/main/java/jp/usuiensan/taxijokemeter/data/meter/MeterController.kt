@@ -71,6 +71,7 @@ class MeterController(private val context: Context) {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.fareYen, chargeableDistanceMeters = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) 0 else it.lowSpeedSeconds, chargeProgress = if (after.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY) null else it.chargeProgress, tripStartedAt = null) }
             }
             MeterAction.DEADHEAD -> { MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }; event(DutyEventType.DEADHEAD_START) }
+            MeterAction.RELEASE -> { MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }; event(DutyEventType.DEADHEAD_END) }
             MeterAction.BREAK -> { MeterRuntimeStore.update { it.copy(dutyActivity = after.dutyActivity, menu = after.menu) }; event(DutyEventType.BREAK_START) }
             MeterAction.RESUME -> { MeterRuntimeStore.update { it.copy(dutyActivity = after.dutyActivity, menu = after.menu) }; event(DutyEventType.BREAK_END) }
             MeterAction.ARRIVE -> { measurement.stop(); MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, menu = after.menu) }; event(DutyEventType.ARRIVAL); endDuty() }

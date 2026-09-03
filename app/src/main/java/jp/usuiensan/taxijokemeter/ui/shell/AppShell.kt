@@ -64,7 +64,7 @@ fun AppShell() {
     }
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         when {
-            showMeter -> MeterScreen(padding, meterRuntime, meterController)
+            showMeter -> MeterScreen(padding, meterRuntime, meterController) { showSettings = true }
             showSettings -> FareRuleSettingsScreen(padding) { showSettings = false }
             else -> MeasurementDebugScreen(padding, { showMeter = true }, { showSettings = true })
         }

@@ -43,6 +43,9 @@ import jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val MeterBlack = Color(0xFF080B0E)
 private val MeterBlue = Color(0xFF087FA5)
@@ -55,7 +58,7 @@ private val MeterLogicalWidth = 900.dp
 private val MeterLogicalHeight = 400.dp
 
 @Composable
-fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController) {
+fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}) {
     Box(
         modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
     ) {
@@ -70,43 +73,40 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
                     scaleY = scale
                 },
             ) {
-                LandscapeMeterLayout(runtime, controller)
+                LandscapeMeterLayout(runtime, controller, onOpenFareSettings)
             }
         }
     }
 }
 
 @Composable
-private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController) {
-    MeterReferenceLayout(runtime, controller)
+private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit) {
+    MeterReferenceLayout(runtime, controller, onOpenFareSettings)
 }
 
 @Composable
-private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController) {
+private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL) {
-                MeterStateLabel(paymentSummaryTitle(runtime.meterState))
-            } else {
-                MeterButton("合計", MeterBlue, Modifier.fillMaxWidth())
-            }
+            MeterStateLabel(stateLabel(runtime.meterState))
             Spacer(Modifier.weight(1f))
         }
 
         Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            MeterDateHeader()
             BalancePanel(Modifier.height(228.dp), runtime, controller)
             Spacer(Modifier.weight(1f))
-            BottomControls(runtime)
+            BottomControls(runtime, onOpenFareSettings)
         }
 
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MeterButton("空車", MeterRed, Modifier.fillMaxWidth(), onClick = { controller.dispatch(MeterAction.EMPTY) })
-            MeterButton("実車", Color(0xFF2C9ED9), Modifier.fillMaxWidth(), onClick = { controller.dispatch(MeterAction.OCCUPIED) })
-            MeterButton("支払", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.PAYMENT) })
-            MeterButton("合計", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.TOTAL) })
+            MeterButton("空車", MeterRed, Modifier.fillMaxWidth(), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.EMPTY) }))
+            MeterButton("実車", Color(0xFF2C9ED9), Modifier.fillMaxWidth(), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.OCCUPIED) }))
+            MeterButton("支払", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.PAYMENT) }))
+            MeterButton("合計", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.TOTAL) }))
         }
     }
 }
@@ -115,26 +115,33 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController) {
     Box(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-        contentAlignment = Alignment.BottomStart,
+        contentAlignment = Alignment.TopStart,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            if (runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE) {
-                MeterButton("出庫", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.DEPART) })
+            if (runtime.meterState == MeterState.DEADHEAD) {
+                Box(Modifier.fillMaxWidth().height(160.dp)) {
+                    Text("回送中", color = MeterWhite, fontSize = 36.sp, modifier = Modifier.align(Alignment.Center))
+                    MeterButton("解除", MeterWhite, Modifier.width(120.dp).align(Alignment.BottomEnd), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.RELEASE) })
+                }
+            } else if (runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    MeterButton("メニュー", MeterWhite, Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.MENU) })
+                    MeterButton("出庫", MeterWhite, Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.DEPART) })
+                }
             } else if (runtime.menu == MeterMenu.EMPTY_MENU) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Text("メニュー", color = MeterWhite)
-                    Text("戻る", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.BACK) })
+                    MeterButton("回送", Color(0xFF2C9ED9), Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.DEADHEAD) })
+                    MeterButton("戻る", MeterWhite, Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.BACK) })
                 }
             } else if (runtime.meterState == MeterState.EMPTY) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Text("メニュー", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.MENU) })
-                    Text("入庫", color = MeterWhite, modifier = Modifier.clickable { controller.dispatch(MeterAction.ARRIVE) })
+                    MeterButton("メニュー", MeterWhite, Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.MENU) })
+                    MeterButton(if (runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE) "出庫" else "入庫", MeterWhite, Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(if (runtime.dutyLifecycle == DutyLifecycle.BEFORE_DEPARTURE) MeterAction.DEPART else MeterAction.ARRIVE) })
                 }
             } else if (runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL) {
                 PaymentSummaryPanel(runtime)
             } else if (runtime.meterState == MeterState.OCCUPIED) {
                 Column(Modifier.fillMaxWidth()) {
-                    Text("実車", color = MeterWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     if (showsChargeProgressRail(runtime.meterState)) {
                         runtime.chargeProgress?.let { ChargeProgressRail(it.mode, it.fraction) }
                     }
@@ -248,7 +255,35 @@ private fun PaymentDetailRow(label: String, value: String) {
 
 @Composable
 private fun MeterStateLabel(text: String) {
-    Text(text, color = MeterWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+    Box(Modifier.fillMaxWidth().background(stateLabelColor(text)).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(text, color = MeterWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+    }
+}
+
+internal fun stateLabel(state: MeterState) = when (state) {
+    MeterState.EMPTY -> "空車"
+    MeterState.OCCUPIED -> "賃走"
+    MeterState.PAYMENT -> "支払"
+    MeterState.TOTAL -> "合計"
+    MeterState.DEADHEAD -> "回送"
+}
+
+private fun stateLabelColor(text: String) = when (text) {
+    "空車" -> MeterRed
+    "賃走", "回送" -> Color(0xFF2C9ED9)
+    "支払" -> Color(0xFF35C75A)
+    else -> MeterBlue
+}
+
+@Composable
+private fun MeterDateHeader() {
+    val now = LocalDateTime.now()
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxWidth()) {
+            Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = MeterWhite, fontSize = 24.sp, modifier = Modifier.align(Alignment.TopEnd))
+        }
+        Text(now.format(DateTimeFormatter.ofPattern("yyyy年 MM月 dd日（E）", Locale.JAPAN)), color = MeterWhite, fontSize = 25.sp)
+    }
 }
 
 @Composable
@@ -298,16 +333,21 @@ internal fun formatFareAmount(yen: Long) = FareAmountParts(yen.formatYen(), "円
 private fun Long.formatYen() = "%,d".format(this)
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot) {
+private fun BottomControls(runtime: MeterRuntimeSnapshot, onOpenFareSettings: () -> Unit) {
     val labels = softKeyLabels(runtime.meterState)
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         labels.forEachIndexed { index, label ->
-            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = if (runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL) ({}) else null)
+            MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = when {
+                runtime.meterState == MeterState.EMPTY && label == "運賃制" -> onOpenFareSettings
+                runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL -> ({})
+                else -> null
+            })
         }
     }
 }
 
 internal fun softKeyLabels(state: MeterState) = when (state) {
+    MeterState.EMPTY -> listOf("累計", "運賃制", "高速")
     MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地")
     MeterState.PAYMENT, MeterState.TOTAL -> listOf("明細", "置換", "立替", "チケット", "定額")
     else -> emptyList()

@@ -14,8 +14,8 @@ class MeterPresentationTest {
     }
 
     @Test
-    fun emptyDoesNotShowOccupiedSoftKeysOrChargeRail() {
-        assertTrue(softKeyLabels(MeterState.EMPTY).isEmpty())
+    fun emptyShowsOnlyEmptySoftKeysAndNoChargeRail() {
+        assertEquals(listOf("累計", "運賃制", "高速"), softKeyLabels(MeterState.EMPTY))
         assertFalse(showsChargeProgressRail(MeterState.EMPTY))
     }
 
@@ -35,5 +35,18 @@ class MeterPresentationTest {
         assertEquals("支払", paymentSummaryTitle(MeterState.PAYMENT))
         assertEquals("合計", paymentSummaryTitle(MeterState.TOTAL))
         assertEquals(listOf("運賃料金計" to "2,700円", "通行料他" to "0円"), paymentSummaryRows(2_700))
+    }
+
+    @Test fun stateLabelsMatchMeterStates() {
+        assertEquals("空車", stateLabel(MeterState.EMPTY))
+        assertEquals("賃走", stateLabel(MeterState.OCCUPIED))
+        assertEquals("支払", stateLabel(MeterState.PAYMENT))
+        assertEquals("合計", stateLabel(MeterState.TOTAL))
+        assertEquals("回送", stateLabel(MeterState.DEADHEAD))
+    }
+
+    @Test fun emptyShowsReferenceSoftKeysAndDeadheadHasNoSoftKeys() {
+        assertEquals(listOf("累計", "運賃制", "高速"), softKeyLabels(MeterState.EMPTY))
+        assertTrue(softKeyLabels(MeterState.DEADHEAD).isEmpty())
     }
 }

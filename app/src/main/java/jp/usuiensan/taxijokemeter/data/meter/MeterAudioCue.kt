@@ -11,6 +11,11 @@ enum class MeterAudioCue {
     HARD_DECELERATION,
 }
 
+internal fun MeterAudioCue.isSafetyNotification() =
+    this == MeterAudioCue.OVERSPEED ||
+        this == MeterAudioCue.HARD_ACCELERATION ||
+        this == MeterAudioCue.HARD_DECELERATION
+
 internal fun SafetyEventType.toMeterAudioCue() = when (this) {
     SafetyEventType.OVERSPEED -> MeterAudioCue.OVERSPEED
     SafetyEventType.HARD_ACCELERATION -> MeterAudioCue.HARD_ACCELERATION

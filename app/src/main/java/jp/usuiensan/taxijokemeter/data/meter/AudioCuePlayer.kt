@@ -10,12 +10,15 @@ class AudioCuePlayer(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val debounceMillis: Long = 5_000L,
 ) {
+    private val safetyGuardMillis = 1_000L
     private val queue = ArrayDeque<MeterAudioCue>()
     private val lastQueuedAt = mutableMapOf<MeterAudioCue, Long>()
+    private var lastSafetyPlaybackStartedAt: Long? = null
     private var playing = false
 
     fun enqueue(cue: MeterAudioCue) {
         val now = nowMillis()
+        if (cue.isSafetyNotification() && lastSafetyPlaybackStartedAt?.let { now - it < safetyGuardMillis } == true) return
         if (lastQueuedAt[cue]?.let { now - it < debounceMillis } == true) return
         lastQueuedAt[cue] = now
         queue.addLast(cue)
@@ -31,6 +34,7 @@ class AudioCuePlayer(
             return
         }
         playing = true
+        if (cue.isSafetyNotification()) lastSafetyPlaybackStartedAt = nowMillis()
         sink.play(resourceId) {
             playing = false
             playNext()

@@ -6,6 +6,143 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AudioCuePlayerTest {
+    @Test fun differentSafetyCueWithinOneSecondIsSkipped() {
+        var now = 1_000L
+        val played = mutableListOf<Int>()
+        val completions = ArrayDeque<() -> Unit>()
+        val player = AudioCuePlayer(
+            resolveResource = { cue -> if (cue == MeterAudioCue.HARD_ACCELERATION) 10 else 20 },
+            sink = AudioCueSink { resourceId, onComplete -> played += resourceId; completions += onComplete },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        now += 400L
+        player.enqueue(MeterAudioCue.HARD_DECELERATION)
+        completions.removeFirst()()
+
+        assertEquals(listOf(10), played)
+    }
+
+    @Test fun differentSafetyCueAfterOneSecondIsPlayed() {
+        var now = 1_000L
+        val played = mutableListOf<Int>()
+        val completions = ArrayDeque<() -> Unit>()
+        val player = AudioCuePlayer(
+            resolveResource = { cue -> if (cue == MeterAudioCue.HARD_ACCELERATION) 10 else 20 },
+            sink = AudioCueSink { resourceId, onComplete -> played += resourceId; completions += onComplete },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        completions.removeFirst()()
+        now += 1_200L
+        player.enqueue(MeterAudioCue.HARD_DECELERATION)
+
+        assertEquals(listOf(10, 20), played)
+    }
+
+    @Test fun overspeedWithinOneSecondIsSkipped() {
+        var now = 1_000L
+        val played = mutableListOf<Int>()
+        val player = AudioCuePlayer(
+            resolveResource = { cue -> if (cue == MeterAudioCue.HARD_ACCELERATION) 10 else 20 },
+            sink = AudioCueSink { resourceId, _ -> played += resourceId },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        now += 400L
+        player.enqueue(MeterAudioCue.OVERSPEED)
+
+        assertEquals(listOf(10), played)
+    }
+
+    @Test fun paymentWithinOneSecondOfSafetyIsNotSkipped() {
+        var now = 1_000L
+        val played = mutableListOf<Int>()
+        val completions = ArrayDeque<() -> Unit>()
+        val player = AudioCuePlayer(
+            resolveResource = { cue -> if (cue == MeterAudioCue.HARD_ACCELERATION) 10 else 30 },
+            sink = AudioCueSink { resourceId, onComplete -> played += resourceId; completions += onComplete },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        now += 400L
+        player.enqueue(MeterAudioCue.PAYMENT)
+        completions.removeFirst()()
+
+        assertEquals(listOf(10, 30), played)
+    }
+
+    @Test fun safetyAfterPaymentIsNotSkippedBySafetyGuard() {
+        var now = 1_000L
+        val played = mutableListOf<Int>()
+        val completions = ArrayDeque<() -> Unit>()
+        val player = AudioCuePlayer(
+            resolveResource = { cue -> if (cue == MeterAudioCue.PAYMENT) 30 else 10 },
+            sink = AudioCueSink { resourceId, onComplete -> played += resourceId; completions += onComplete },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.PAYMENT)
+        completions.removeFirst()()
+        now += 400L
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+
+        assertEquals(listOf(30, 10), played)
+    }
+
+    @Test fun safetySkippedByGuardDoesNotUpdateItsDebounceHistory() {
+        var now = 1_000L
+        val played = mutableListOf<Int>()
+        val completions = ArrayDeque<() -> Unit>()
+        val player = AudioCuePlayer(
+            resolveResource = { cue -> if (cue == MeterAudioCue.HARD_ACCELERATION) 10 else 20 },
+            sink = AudioCueSink { resourceId, onComplete -> played += resourceId; completions += onComplete },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        now += 400L
+        player.enqueue(MeterAudioCue.HARD_DECELERATION)
+        completions.removeFirst()()
+        now += 800L
+        player.enqueue(MeterAudioCue.HARD_DECELERATION)
+
+        assertEquals(listOf(10, 20), played)
+    }
+
+    @Test fun sameSafetyCueKeepsExistingFiveSecondDebounce() {
+        var now = 1_000L
+        val played = mutableListOf<Int>()
+        val completions = ArrayDeque<() -> Unit>()
+        val player = AudioCuePlayer(
+            resolveResource = { 10 },
+            sink = AudioCueSink { resourceId, onComplete -> played += resourceId; completions += onComplete },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        completions.removeFirst()()
+        now += 3_000L
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        now += 3_000L
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+
+        assertEquals(listOf(10, 10), played)
+    }
+
+    @Test fun onlyExplicitSafetyCuesUseSafetyGuard() {
+        assertEquals(true, MeterAudioCue.OVERSPEED.isSafetyNotification())
+        assertEquals(true, MeterAudioCue.HARD_ACCELERATION.isSafetyNotification())
+        assertEquals(true, MeterAudioCue.HARD_DECELERATION.isSafetyNotification())
+        assertEquals(false, MeterAudioCue.OCCUPIED.isSafetyNotification())
+        assertEquals(false, MeterAudioCue.PAYMENT.isSafetyNotification())
+        assertEquals(false, MeterAudioCue.RETURN_TO_GENERAL.isSafetyNotification())
+    }
+
     @Test fun queuedCuesDoNotOverlapAndDuplicateCueIsDebounced() {
         val played = mutableListOf<Int>()
         val completions = ArrayDeque<() -> Unit>()

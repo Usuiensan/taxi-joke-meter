@@ -31,15 +31,19 @@ import jp.usuiensan.taxijokemeter.data.meter.toMeterAudioCue
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.measurement.RestDistanceAccumulator
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSignal
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
+import jp.usuiensan.taxijokemeter.data.meter.toMeterRuntimeState
 import jp.usuiensan.taxijokemeter.data.meter.safetyWarningText
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
 import jp.usuiensan.taxijokemeter.domain.fare.FareCalculator
+import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
+import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -73,8 +77,10 @@ class LocationMeasurementService : Service() {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
-            val accumulation = fareMeasurement?.add(sample)
-            runtimeState = runtimeState.copy(previousSample = sample)
+            val accumulation = if (sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
+            runtimeState = runtimeState.advance(sample)
+            val restId = MeterRuntimeStore.snapshot.value.restIntervalId.takeIf { sample.occupancyState == OccupancyState.REST }
+            val restDistance = runtimeState.restDistanceMeters.takeIf { restId != null }
             MeasurementDebugStore.update { it.copy(health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()), latestAccuracyMeters = sample.accuracyMeters, latestSpeedMps = sample.speedMps, roadMode = sample.roadMode.name) }
             MeterRuntimeStore.update { current -> current.copy(
                 roadMode = sample.roadMode,
@@ -85,6 +91,7 @@ class LocationMeasurementService : Service() {
                 actualDistanceMeters = accumulation?.actualDistanceMeters ?: current.actualDistanceMeters,
                 lowSpeedSeconds = accumulation?.lowSpeedSeconds ?: current.lowSpeedSeconds,
                 fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.fareYen,
+                restDistanceMeters = restDistance?.toLong() ?: current.restDistanceMeters,
                 chargeProgress = if (sample.isValid) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
                     val mode = sample.speedMps?.let { speed ->
@@ -95,6 +102,14 @@ class LocationMeasurementService : Service() {
             ) }
             scope.launch(sampleProcessingDispatcher) {
                 repository.save(sample)
+                if (restId != null && restDistance != null) {
+                    val records = DutyRecordRepository(database)
+                    records.updateRestDistance(restId, restDistance.toLong())
+                    if (restDistance >= REST_DISTANCE_LIMIT_METERS) {
+                        records.finishRestInterval(restId, Instant.now(), "AUTO_DISTANCE_1KM")
+                        healthHandler.post { finishRestAutomatically(restId, restDistance) }
+                    }
+                }
                 safetyEventDetector.consume(sample).forEach { signal ->
                     when (signal) {
                         is SafetyEventSignal.Started -> {
@@ -132,7 +147,9 @@ class LocationMeasurementService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_START) {
+        check(Looper.myLooper() == Looper.getMainLooper()) { "Measurement commands must run on the main looper" }
+        val action = intent?.action ?: return START_NOT_STICKY
+        if (action == ACTION_START) {
             runtimeState = MeasurementRuntimeState(DrivingSampleState(
                 intent.getStringExtra(EXTRA_SESSION_ID) ?: return START_NOT_STICKY,
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: RoadMode.GENERAL.name),
@@ -159,7 +176,7 @@ class LocationMeasurementService : Service() {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, listener, Looper.getMainLooper())
             healthHandler.post(healthWatchdog)
             Log.i(TAG, "GPS状態=計測開始 sessionId=${runtimeState.sampleState.dutySessionId}")
-        } else if (intent?.action == ACTION_UPDATE_STATE) {
+        } else if (action == ACTION_UPDATE_STATE) {
             if (!MeasurementDebugStore.snapshot.value.running) return START_NOT_STICKY
             runtimeState = runtimeState.updateState(
                 RoadMode.valueOf(intent.getStringExtra(EXTRA_ROAD_MODE) ?: runtimeState.sampleState.roadMode.name),
@@ -168,7 +185,7 @@ class LocationMeasurementService : Service() {
             fareMeasurement?.setOccupancyState(runtimeState.sampleState.occupancyState)
             MeasurementDebugStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode.name) }
             MeterRuntimeStore.update { it.copy(roadMode = runtimeState.sampleState.roadMode) }
-        } else if (intent?.action == ACTION_BEGIN_FARE) {
+        } else if (action == ACTION_BEGIN_FARE) {
             if (fareMeasurement?.isActive == true) return START_NOT_STICKY
             val rule = intent.fareRuleOrNull() ?: fareRuleOrNull() ?: return START_NOT_STICKY
             fareRule = rule
@@ -179,7 +196,7 @@ class LocationMeasurementService : Service() {
             session.setOccupancyState(OccupancyState.OCCUPIED)
             MeterRuntimeStore.update { it.copy(meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) }
             Log.i(TAG, "料金計測=開始")
-        } else if (intent?.action == ACTION_END_FARE) {
+        } else if (action == ACTION_END_FARE) {
             val result = fareMeasurement?.end()
             result?.let { accumulation -> fareRuleOrNull()?.let { rule ->
                 val fare = FareCalculator.calculate(rule, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds)
@@ -187,7 +204,12 @@ class LocationMeasurementService : Service() {
                 MeterRuntimeStore.snapshot.value.currentTripId?.let { tripId -> scope.launch { DutyRecordRepository(database).updateTripMeasurement(tripId, accumulation.actualDistanceMeters, accumulation.chargeableDistanceMeters, accumulation.lowSpeedSeconds, fare) } }
             } }
             Log.i(TAG, "料金計測=終了 結果=${result ?: "未開始"}")
-        }
+        } else return START_NOT_STICKY
+        MeasurementDebugStore.update { it.copy(processedCommands = it.processedCommands + MeasurementCommandDebug(
+            action,
+            runtimeState.sampleState.occupancyState,
+            fareMeasurement?.isActive == true,
+        )) }
         return START_NOT_STICKY
     }
 
@@ -201,6 +223,20 @@ class LocationMeasurementService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun finishRestAutomatically(restId: String, restDistance: Double) {
+        if (runtimeState.sampleState.occupancyState != OccupancyState.REST || MeterRuntimeStore.snapshot.value.restIntervalId != restId) return
+        runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.EMPTY)
+        MeterRuntimeStore.update { current ->
+            val after = MeterStateMachine(current.toMeterRuntimeState()).dispatch(MeterAction.REST_RELEASE)
+            current.copy(
+                meterState = after.meterState,
+                menu = after.menu,
+                restIntervalId = null,
+                restDistanceMeters = restDistance.toLong(),
+            )
+        }
+    }
 
     private fun ensureFareMeasurementInitialized(): FareMeasurementSession? {
         if (fareMeasurement == null) {
@@ -277,6 +313,7 @@ class LocationMeasurementService : Service() {
         const val EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS = "low_speed_time_increment_seconds"
         private const val CHANNEL_ID = "duty_measurement"
         private const val NOTIFICATION_ID = 1001
+        private const val REST_DISTANCE_LIMIT_METERS = 1_000L
         private const val TAG = "LocationMeasurement"
     }
 }

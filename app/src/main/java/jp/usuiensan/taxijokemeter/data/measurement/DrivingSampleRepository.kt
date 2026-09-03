@@ -17,6 +17,9 @@ class DrivingSampleRepository(private val database: DutyDatabase) {
 
     suspend fun findByDutySessionId(dutySessionId: String): List<DrivingSample> =
         database.drivingSampleDao().findByDutySessionId(dutySessionId).map(DrivingSampleEntity::toDomain)
+
+    suspend fun latestValidByDutySessionId(dutySessionId: String): DrivingSample? =
+        findByDutySessionId(dutySessionId).lastOrNull(DrivingSample::isValid)
 }
 
 private fun DrivingSample.toEntity() = DrivingSampleEntity(

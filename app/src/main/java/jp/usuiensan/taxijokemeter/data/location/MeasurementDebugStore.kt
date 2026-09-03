@@ -3,6 +3,13 @@ package jp.usuiensan.taxijokemeter.data.location
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+
+data class MeasurementCommandDebug(
+    val action: String,
+    val occupancyState: OccupancyState,
+    val fareActive: Boolean,
+)
 
 data class MeasurementDebugSnapshot(
     val running: Boolean = false,
@@ -12,6 +19,7 @@ data class MeasurementDebugSnapshot(
     val latestSpeedMps: Double? = null,
     val savedSampleCount: Int = 0,
     val roadMode: String = "GENERAL",
+    val processedCommands: List<MeasurementCommandDebug> = emptyList(),
 )
 
 object MeasurementDebugStore {

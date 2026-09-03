@@ -1,5 +1,9 @@
 package jp.usuiensan.taxijokemeter.ui.meter
 
+import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
+import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
+import jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState
+import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
@@ -20,14 +24,20 @@ class MeterPresentationTest {
     }
 
     @Test
-    fun emptyShowsOnlyEmptySoftKeysAndNoChargeRail() {
-        assertEquals(listOf("回送", "レポート", "再発行", "デバッグ", "運賃制"), softKeyLabels(MeterState.EMPTY))
+    fun emptyShowsTwoDirectMenuRowsAndNoChargeRail() {
+        assertEquals(
+            listOf(
+                listOf("休憩", "迎車", "予約", "回送", null),
+                listOf("レポート", "再発行", "運賃制", "デバッグ", null),
+            ),
+            emptyMenuRows(),
+        )
         assertFalse(showsChargeProgressRail(MeterState.EMPTY))
     }
 
     @Test
-    fun occupiedShowsOccupiedSoftKeysAndChargeRail() {
-        assertEquals(listOf("早朝", "高割", "障割", "予約", "経由地"), softKeyLabels(MeterState.OCCUPIED))
+    fun occupiedShowsPrimaryOperationSoftKeysAndChargeRail() {
+        assertEquals(listOf("人員", "経由地", "迎車", "早朝", "高割"), softKeyLabels(MeterState.OCCUPIED))
         assertTrue(showsChargeProgressRail(MeterState.OCCUPIED))
     }
 
@@ -49,6 +59,8 @@ class MeterPresentationTest {
         assertEquals("支払", stateLabel(MeterState.PAYMENT))
         assertEquals("合計", stateLabel(MeterState.TOTAL))
         assertEquals("回送", stateLabel(MeterState.DEADHEAD))
+        assertEquals("休憩", stateLabel(MeterState.REST))
+        assertEquals("迎車", stateLabel(MeterState.PICKUP))
     }
 
     @Test fun emptyButtonKeepsEmptyAndLeavesOtherTransitionsUnchanged() {
@@ -56,9 +68,21 @@ class MeterPresentationTest {
         assertEquals(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.EMPTY, emptyButtonAction(MeterState.TOTAL))
     }
 
-    @Test fun emptyAndDeadheadUseTheirFixedSoftKeySlots() {
-        assertEquals(listOf("回送", "レポート", "再発行", "デバッグ", "運賃制"), softKeyLabels(MeterState.EMPTY))
-        assertEquals(listOf("解除"), softKeyLabels(MeterState.DEADHEAD))
+    @Test fun pickupEmptyKeyReturnsToEmptyMenu() {
+        val machine = MeterStateMachine(MeterRuntimeState(meterState = MeterState.PICKUP, menu = MeterMenu.NONE))
+
+        assertEquals(MeterAction.EMPTY, emptyButtonAction(MeterState.PICKUP))
+        machine.dispatch(emptyButtonAction(MeterState.PICKUP))
+
+        assertEquals(MeterState.EMPTY, machine.state.meterState)
+        assertEquals(MeterMenu.EMPTY_MENU, machine.state.menu)
+    }
+
+    @Test fun restAndDeadheadUseTheirReleaseSoftKeySlots() {
+        assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.REST))
+        assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
+        assertEquals(MeterAction.REST_RELEASE, softKeyAction(MeterState.REST, "解除"))
+        assertEquals(MeterAction.RELEASE, softKeyAction(MeterState.DEADHEAD, "解除"))
     }
 
     @Test fun dateTimeIsShownOnlyOnEmptyAndDeadheadSurfaces() {
@@ -71,15 +95,25 @@ class MeterPresentationTest {
     }
 
     @Test fun everyMeterStateUsesFiveSoftKeySlots() {
-        assertEquals(listOf("回送", "レポート", "再発行", "デバッグ", "運賃制"), softKeySlots(MeterState.EMPTY))
-        assertEquals(listOf("早朝", "高割", "障割", "予約", "経由地"), softKeySlots(MeterState.OCCUPIED))
+        assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY))
+        assertEquals(listOf("人員", "経由地", "迎車", "早朝", "高割"), softKeySlots(MeterState.OCCUPIED))
         assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeySlots(MeterState.PAYMENT))
         assertEquals(listOf("明細", "置換", "立替", "チケット", "定額"), softKeySlots(MeterState.TOTAL))
         assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
     }
 
     @Test fun emptyMenuUsesFixedMenuSoftKeySlots() {
-        assertEquals(listOf("回送", "レポート", "再発行", "デバッグ", "運賃制"), softKeySlots(MeterState.EMPTY, true))
+        assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY, true))
+    }
+
+    @Test fun rightKeysUseStateSpecificEnablementAndKeepRoadModesUsable() {
+        assertEquals(listOf(false, true, false, false, true, true, true), rightKeyEnabled(MeterState.EMPTY))
+        assertEquals(listOf(true, false, true, false, true, true, true), rightKeyEnabled(MeterState.OCCUPIED))
+        assertEquals(listOf(false, true, false, true, true, true, true), rightKeyEnabled(MeterState.PAYMENT))
+        assertEquals(listOf(true, true, false, false, true, true, true), rightKeyEnabled(MeterState.PICKUP))
+        assertEquals(listOf(false, true, false, false, true, true, true), rightKeyEnabled(MeterState.REST))
+        assertEquals(listOf(true, true, false, false, true, true, true), rightKeyEnabled(MeterState.TOTAL))
+        assertEquals(listOf(false, false, false, false, true, true, true), rightKeyEnabled(MeterState.DEADHEAD))
     }
 
     @Test fun roadModeButtonsMapToExistingRoadModes() {

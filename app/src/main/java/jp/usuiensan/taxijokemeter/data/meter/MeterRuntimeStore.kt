@@ -4,12 +4,14 @@ import jp.usuiensan.taxijokemeter.data.location.LocationHealth
 import jp.usuiensan.taxijokemeter.domain.meter.DutyActivity
 import jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
+import jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,8 +38,16 @@ data class MeterRuntimeSnapshot(
     val currentTripId: String? = null,
     val currentTripNumber: Int? = null,
     val chargeProgress: ChargeProgressUiState? = null,
+    val pendingReservation: Boolean = false,
+    val passengerCount: Int = 1,
+    val waypointCount: Int = 0,
+    val pickupFeeApplied: Boolean = false,
+    val restIntervalId: String? = null,
+    val restDistanceMeters: Long = 0,
     val safetyWarning: SafetyWarning? = null,
 )
+
+internal fun MeterRuntimeSnapshot.toMeterRuntimeState() = MeterRuntimeState(dutyLifecycle, meterState, dutyActivity, roadMode, menu)
 
 data class SafetyWarning(
     val id: String,
@@ -59,8 +69,8 @@ object MeterRuntimeStore {
     private val _snapshot = MutableStateFlow(MeterRuntimeSnapshot())
     val snapshot: StateFlow<MeterRuntimeSnapshot> = _snapshot.asStateFlow()
     private val warningScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    fun update(transform: (MeterRuntimeSnapshot) -> MeterRuntimeSnapshot) { _snapshot.value = transform(_snapshot.value) }
-    fun resetMeter() { update { it.copy(fareYen = 0, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) } }
+    fun update(transform: (MeterRuntimeSnapshot) -> MeterRuntimeSnapshot) { _snapshot.update(transform) }
+    fun resetMeter() { update { it.copy(fareYen = 0, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null, pendingReservation = false, passengerCount = 1, waypointCount = 0, pickupFeeApplied = false, restIntervalId = null, restDistanceMeters = 0) } }
 
     fun showSafetyWarning(text: String, nowElapsedRealtimeMillis: Long) {
         val warning = SafetyWarning(UUID.randomUUID().toString(), snapshot.value.meterState, nowElapsedRealtimeMillis, nowElapsedRealtimeMillis + 3_000L, text)

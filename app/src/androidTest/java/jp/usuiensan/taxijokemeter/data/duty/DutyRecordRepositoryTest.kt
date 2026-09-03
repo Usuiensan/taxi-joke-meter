@@ -20,10 +20,12 @@ import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotNull
 
 @RunWith(AndroidJUnit4::class)
 class DutyRecordRepositoryTest {
@@ -111,4 +113,123 @@ class DutyRecordRepositoryTest {
         assertEquals(2, voided.tripNumber)
         assertEquals(3, next.tripNumber)
     }
+
+    @Test fun pickupFeeIsAddedOnlyOnceForTheSameTripAndType() = runBlocking {
+        val trip = createTrip()
+
+        repository.addChargeIfAbsent(trip.id, "PICKUP_FEE", 500, trip.pickupAt, "迎車")
+        repository.addChargeIfAbsent(trip.id, "PICKUP_FEE", 500, trip.pickupAt, "迎車")
+
+        assertEquals(1, database.dutyDao().findTripCharges(trip.id).size)
+    }
+
+    @Test fun zeroAmountChargeIsNotInserted() = runBlocking {
+        val trip = createTrip()
+
+        repository.addChargeIfAbsent(trip.id, "PICKUP_FEE", 0, trip.pickupAt, "迎車")
+
+        assertTrue(database.dutyDao().findTripCharges(trip.id).isEmpty())
+    }
+
+    @Test fun waypointsUseOneBasedSequences() = runBlocking {
+        val trip = createTrip()
+        val place = place(trip.pickupAt)
+
+        repository.addWaypoint(trip.id, place)
+        repository.addWaypoint(trip.id, place.copy(latitude = 35.73))
+        repository.addWaypoint(trip.id, place.copy(latitude = 35.74))
+
+        assertEquals(listOf(1, 2, 3), database.dutyDao().findTripPlaces(trip.id).map { it.sequence })
+    }
+
+    @Test fun dropoffSequenceZeroIsUpdatedInsteadOfDuplicated() = runBlocking {
+        val trip = createTrip()
+
+        repository.upsertDropoff(trip.id, place(trip.pickupAt))
+        repository.upsertDropoff(trip.id, place(trip.pickupAt.plusSeconds(60)).copy(latitude = 35.74))
+
+        val dropoffs = database.dutyDao().findTripPlaces(trip.id).filter { it.type == "DROPOFF" }
+        assertEquals(1, dropoffs.size)
+        assertEquals(35.74, dropoffs.single().latitude, 0.0)
+    }
+
+    @Test fun staleDropoffGeocodeCannotUpdateNewerCoordinates() = runBlocking {
+        val trip = createTrip()
+        repository.upsertDropoff(trip.id, place(trip.pickupAt))
+        val staleDropoff = database.dutyDao().findTripPlace(trip.id, "DROPOFF", 0)!!
+        repository.upsertDropoff(trip.id, place(trip.pickupAt.plusSeconds(60)).copy(latitude = 35.74))
+
+        database.dutyDao().updateTripPlaceAddresses(
+            id = staleDropoff.id,
+            recordedAt = staleDropoff.recordedAt,
+            latitude = staleDropoff.latitude,
+            longitude = staleDropoff.longitude,
+            canonicalAddress = "古い住所",
+            reportAddress = null,
+            landmarkName = null,
+            landmarkDetail = null,
+        )
+
+        val currentDropoff = database.dutyDao().findTripPlace(trip.id, "DROPOFF", 0)!!
+        assertNull(currentDropoff.canonicalAddress)
+        database.dutyDao().updateTripPlaceAddresses(
+            id = currentDropoff.id,
+            recordedAt = currentDropoff.recordedAt,
+            latitude = currentDropoff.latitude,
+            longitude = currentDropoff.longitude,
+            canonicalAddress = "新しい住所",
+            reportAddress = null,
+            landmarkName = null,
+            landmarkDetail = null,
+        )
+        assertEquals("新しい住所", database.dutyDao().findTripPlace(trip.id, "DROPOFF", 0)?.canonicalAddress)
+    }
+
+    @Test fun passengerCountAndRestFinishFieldsAreUpdated() = runBlocking {
+        val trip = createTrip()
+        repository.updatePassengerCount(trip.id, 4)
+        val restId = repository.startRestInterval("duty-1", Instant.parse("2026-09-03T01:00:00Z"), place(Instant.EPOCH))
+        val endedAt = Instant.parse("2026-09-03T02:00:00Z")
+
+        repository.updateRestDistance(restId, 1_250)
+        repository.finishRestInterval(restId, endedAt, "AUTO_DISTANCE_1KM")
+
+        assertEquals(4, repository.findTrip(trip.id)!!.passengerCount)
+        val rest = database.dutyDao().findRestInterval(restId)
+        assertNotNull(rest)
+        assertEquals(1_250L, rest!!.distanceMeters)
+        assertEquals(endedAt, rest.endedAt)
+        assertEquals("AUTO_DISTANCE_1KM", rest.endReason)
+    }
+
+    @Test fun restFinishKeepsTheFirstEndTimeAndReason() = runBlocking {
+        repository.save(DutySession("duty-1", Instant.EPOCH, null))
+        val restId = repository.startRestInterval("duty-1", Instant.EPOCH)
+        val automaticEnd = Instant.parse("2026-09-03T01:00:00Z")
+
+        repository.finishRestInterval(restId, automaticEnd, "AUTO_DISTANCE_1KM")
+        repository.finishRestInterval(restId, automaticEnd.plusSeconds(1), "MANUAL")
+        repository.finishRestInterval(restId, automaticEnd.plusSeconds(2), "OCCUPIED_STARTED")
+
+        val rest = database.dutyDao().findRestInterval(restId)
+        assertEquals(automaticEnd, rest?.endedAt)
+        assertEquals("AUTO_DISTANCE_1KM", rest?.endReason)
+    }
+
+    @Test fun placeOperationsWithoutCoordinatesSucceedWithoutSavingPlaces() = runBlocking {
+        val trip = createTrip()
+
+        repository.savePickupPlace(trip.id, null)
+        repository.addWaypoint(trip.id, null)
+        repository.upsertDropoff(trip.id, null)
+
+        assertTrue(database.dutyDao().findTripPlaces(trip.id).isEmpty())
+    }
+
+    private suspend fun createTrip(): Trip {
+        repository.save(DutySession("duty-1", Instant.EPOCH, null))
+        return repository.startTrip("duty-1", Instant.parse("2026-09-03T00:00:00Z"), FareRule(1_000, 500, 200, 100, 10, 75))
+    }
+
+    private fun place(recordedAt: Instant) = RecordedPlace(35.7295, 139.7168, 12.0, recordedAt, null, LocationPrecision.UNKNOWN, LocationSource.GPS)
 }

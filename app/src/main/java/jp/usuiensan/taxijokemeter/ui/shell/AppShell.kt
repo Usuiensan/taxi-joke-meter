@@ -2,6 +2,7 @@ package jp.usuiensan.taxijokemeter.ui.shell
 
 import android.app.Activity
 import android.Manifest
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,6 +40,8 @@ import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
+import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettings
+import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
@@ -52,6 +55,7 @@ fun AppShell() {
     val activity = context as Activity
     val meterRuntime by MeterRuntimeStore.snapshot.collectAsState()
     val meterController = remember { MeterController(context) }
+    val openFareSettings = { showSettings = true; showMeter = false }
     DisposableEffect(showMeter) {
         activity.requestedOrientation = if (showMeter) {
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -72,8 +76,8 @@ fun AppShell() {
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         when {
             showSettings -> FareRuleSettingsScreen(padding) { showSettings = false; showMeter = true }
-            showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, { showSettings = true; showMeter = false })
-            showMeter -> MeterScreen(padding, meterRuntime, meterController, { showSettings = true; showMeter = false }, { showDebug = true; showMeter = false })
+            showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, openFareSettings)
+            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false })
             else -> MeterScreen(padding, meterRuntime, meterController)
         }
     }
@@ -122,12 +126,15 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
 private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, onBack: () -> Unit) {
     val context = LocalContext.current
     val current = FareRuleStore(context).load()
+    val chargeSettings = TripChargeSettingsStore(context).load()
     var initialDistance by remember(current) { mutableStateOf(current.initialDistanceMeters.toString()) }
     var initialFare by remember(current) { mutableStateOf(current.initialFareYen.toString()) }
     var distanceIncrement by remember(current) { mutableStateOf(current.distanceIncrementMeters.toString()) }
     var incrementFare by remember(current) { mutableStateOf(current.distanceIncrementFareYen.toString()) }
     var lowSpeedLimit by remember(current) { mutableStateOf(current.lowSpeedLimitKmh.toString()) }
     var lowSpeedSeconds by remember(current) { mutableStateOf(current.lowSpeedTimeIncrementSeconds.toString()) }
+    var pickupFee by remember(chargeSettings) { mutableStateOf(chargeSettings.pickupFeeYen.toString()) }
+    var reservationFee by remember(chargeSettings) { mutableStateOf(chargeSettings.reservationFeeYen.toString()) }
     var error by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("運賃設定")
@@ -137,12 +144,14 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
         FareRuleField("加算運賃 (円)", incrementFare) { incrementFare = it }
         FareRuleField("低速判定速度 (km/h)", lowSpeedLimit) { lowSpeedLimit = it }
         FareRuleField("低速時間加算 (秒)", lowSpeedSeconds) { lowSpeedSeconds = it }
+        FareRuleField("迎車料金 (円)", pickupFee) { pickupFee = it }
+        FareRuleField("予約料金 (円)", reservationFee) { reservationFee = it }
         error?.let { Text(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onBack) { Text("戻る") }
             Button(onClick = {
                 try {
-                    FareRuleStore(context).save(FareRule(initialDistance.toLong(), initialFare.toLong(), distanceIncrement.toLong(), incrementFare.toLong(), lowSpeedLimit.toInt(), lowSpeedSeconds.toInt()))
+                    saveFareSettings(context, initialDistance, initialFare, distanceIncrement, incrementFare, lowSpeedLimit, lowSpeedSeconds, pickupFee, reservationFee)
                     error = null
                     onBack()
                 } catch (_: NumberFormatException) {
@@ -153,6 +162,23 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
             }) { Text("保存") }
         }
     }
+}
+
+internal fun saveFareSettings(
+    context: Context,
+    initialDistance: String,
+    initialFare: String,
+    distanceIncrement: String,
+    incrementFare: String,
+    lowSpeedLimit: String,
+    lowSpeedSeconds: String,
+    pickupFee: String,
+    reservationFee: String,
+) {
+    val rule = FareRule(initialDistance.toLong(), initialFare.toLong(), distanceIncrement.toLong(), incrementFare.toLong(), lowSpeedLimit.toInt(), lowSpeedSeconds.toInt())
+    val charges = TripChargeSettings(pickupFee.toLong(), reservationFee.toLong())
+    FareRuleStore(context).save(rule)
+    TripChargeSettingsStore(context).save(charges)
 }
 
 @Composable

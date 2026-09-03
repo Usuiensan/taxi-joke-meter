@@ -15,6 +15,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +26,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -35,17 +38,15 @@ import jp.usuiensan.taxijokemeter.data.location.MeasurementDebugStore
 import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
-import jp.usuiensan.taxijokemeter.domain.model.EnergyCostProfile
-import jp.usuiensan.taxijokemeter.domain.model.EnergyEfficiency
-import jp.usuiensan.taxijokemeter.domain.model.FuelType
-import jp.usuiensan.taxijokemeter.domain.model.Powertrain
+import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
+import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
-import jp.usuiensan.taxijokemeter.domain.fare.FuelCostFareFactory
 import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
 
 @Composable
 fun AppShell() {
     var showMeter by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val activity = context as Activity
     val meterRuntime by MeterRuntimeStore.snapshot.collectAsState()
@@ -58,15 +59,20 @@ fun AppShell() {
         }
         onDispose { }
     }
-    BackHandler(enabled = showMeter) { showMeter = false }
+    BackHandler(enabled = showMeter || showSettings) {
+        if (showMeter) showMeter = false else showSettings = false
+    }
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-        if (showMeter) MeterScreen(padding, meterRuntime, meterController)
-        else MeasurementDebugScreen(padding) { showMeter = true }
+        when {
+            showMeter -> MeterScreen(padding, meterRuntime, meterController)
+            showSettings -> FareRuleSettingsScreen(padding) { showSettings = false }
+            else -> MeasurementDebugScreen(padding, { showMeter = true }, { showSettings = true })
+        }
     }
 }
 
 @Composable
-private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, showMeter: () -> Unit) {
+private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, showMeter: () -> Unit, showSettings: () -> Unit) {
     val context = LocalContext.current
     val runtime by MeterRuntimeStore.snapshot.collectAsState()
     val controller = remember { DutyMeasurementController(context) }
@@ -74,7 +80,7 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED)
     }
     val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> permissionGranted = granted }
-    val fareRule = remember { FuelCostFareFactory.create(EnergyCostProfile(FuelType.REGULAR, Powertrain.ICE, 180.0, EnergyEfficiency.KmPerLiter(15.0)), 1_000, 200, 10) }
+    val fareRule = FareRuleStore(context).load()
 
     val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -100,5 +106,48 @@ private fun MeasurementDebugScreen(contentPadding: androidx.compose.foundation.l
             }
         }
         Button(onClick = showMeter) { Text("メーター表示") }
+        Button(onClick = showSettings) { Text("運賃設定") }
     }
+}
+
+@Composable
+private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val current = FareRuleStore(context).load()
+    var initialDistance by remember(current) { mutableStateOf(current.initialDistanceMeters.toString()) }
+    var initialFare by remember(current) { mutableStateOf(current.initialFareYen.toString()) }
+    var distanceIncrement by remember(current) { mutableStateOf(current.distanceIncrementMeters.toString()) }
+    var incrementFare by remember(current) { mutableStateOf(current.distanceIncrementFareYen.toString()) }
+    var lowSpeedLimit by remember(current) { mutableStateOf(current.lowSpeedLimitKmh.toString()) }
+    var lowSpeedSeconds by remember(current) { mutableStateOf(current.lowSpeedTimeIncrementSeconds.toString()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("運賃設定")
+        FareRuleField("初乗り距離 (m)", initialDistance) { initialDistance = it }
+        FareRuleField("初乗り運賃 (円)", initialFare) { initialFare = it }
+        FareRuleField("加算距離 (m)", distanceIncrement) { distanceIncrement = it }
+        FareRuleField("加算運賃 (円)", incrementFare) { incrementFare = it }
+        FareRuleField("低速判定速度 (km/h)", lowSpeedLimit) { lowSpeedLimit = it }
+        FareRuleField("低速時間加算 (秒)", lowSpeedSeconds) { lowSpeedSeconds = it }
+        error?.let { Text(it) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onBack) { Text("戻る") }
+            Button(onClick = {
+                try {
+                    FareRuleStore(context).save(FareRule(initialDistance.toLong(), initialFare.toLong(), distanceIncrement.toLong(), incrementFare.toLong(), lowSpeedLimit.toInt(), lowSpeedSeconds.toInt()))
+                    error = null
+                    onBack()
+                } catch (_: NumberFormatException) {
+                    error = "すべて整数で入力してください"
+                } catch (_: IllegalArgumentException) {
+                    error = "入力値を確認してください"
+                }
+            }) { Text("保存") }
+        }
+    }
+}
+
+@Composable
+private fun FareRuleField(label: String, value: String, onValueChange: (String) -> Unit) {
+    OutlinedTextField(value, onValueChange, label = { Text(label) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
 }

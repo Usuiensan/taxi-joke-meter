@@ -4,16 +4,12 @@ import android.content.Context
 import android.content.pm.PackageManager
 import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
+import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
-import jp.usuiensan.taxijokemeter.domain.fare.FuelCostFareFactory
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import jp.usuiensan.taxijokemeter.domain.model.DutyEvent
 import jp.usuiensan.taxijokemeter.domain.model.DutyEventType
-import jp.usuiensan.taxijokemeter.domain.model.EnergyCostProfile
-import jp.usuiensan.taxijokemeter.domain.model.EnergyEfficiency
-import jp.usuiensan.taxijokemeter.domain.model.FuelType
-import jp.usuiensan.taxijokemeter.domain.model.Powertrain
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
@@ -32,7 +28,7 @@ class MeterController(private val context: Context) {
     private val machine = MeterStateMachine()
     private var sessionId: String? = null
     private var trip: Trip? = null
-    private val fareRule = FuelCostFareFactory.create(EnergyCostProfile(FuelType.REGULAR, Powertrain.ICE, 180.0, EnergyEfficiency.KmPerLiter(15.0)), 1_000, 200, 10)
+    private var fareRule = FareRuleStore(context).load()
 
     fun dispatch(action: MeterAction) {
         if (action == MeterAction.DEPART && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
@@ -41,6 +37,7 @@ class MeterController(private val context: Context) {
         val after = machine.dispatch(action)
         when (action) {
             MeterAction.DEPART -> {
+                fareRule = FareRuleStore(context).load()
                 val id = measurement.start(after.roadMode, jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY, fareRule)
                 sessionId = id
                 MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, meterState = after.meterState, dutySessionId = id) }

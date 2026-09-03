@@ -72,12 +72,12 @@ class MeterController internal constructor(private val context: Context, private
             MeterAction.OCCUPIED -> if (startsNewTrip(before.meterState)) startTrip(before.meterState, after)
             else if (before.meterState == MeterState.PAYMENT) {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
-                measurement.updateState(after.roadMode, OccupancyState.OCCUPIED)
+                enqueue { measurement.updateState(after.roadMode, OccupancyState.OCCUPIED) }
             }
             MeterAction.PAYMENT -> {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
-                measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
                 enqueue {
+                    measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
                     val tripId = activeTripId() ?: return@enqueue
                     val db = database()
                     try { DutyRecordRepository(db).upsertDropoff(tripId, latestValidPlace(DrivingSampleRepository(db))) } finally { db.close() }
@@ -85,40 +85,44 @@ class MeterController internal constructor(private val context: Context, private
             }
             MeterAction.TOTAL -> {
                 val value = MeterRuntimeStore.snapshot.value
-                measurement.endFareMeasurement()
-                measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
                 event(DutyEventType.DROPOFF)
-                enqueue { finishTrip(TripStatus.COMPLETED, true, value) }
+                enqueue {
+                    measurement.endFareMeasurement()
+                    measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
+                    finishTrip(TripStatus.COMPLETED, true, value)
+                }
             }
             MeterAction.EMPTY -> {
                 if (before.meterState == MeterState.OCCUPIED) {
                     val value = MeterRuntimeStore.snapshot.value
-                    enqueue { finishTrip(TripStatus.VOIDED, false, value) }
-                    measurement.endFareMeasurement()
-                }
-                measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
+                    enqueue {
+                        measurement.endFareMeasurement()
+                        measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
+                        finishTrip(TripStatus.VOIDED, false, value)
+                    }
+                } else enqueue { measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState)) }
                 MeterRuntimeStore.update { state -> state.copy(meterState = after.meterState, menu = after.menu, fareYen = if (after.meterState == MeterState.EMPTY) 0 else state.fareYen, actualDistanceMeters = if (after.meterState == MeterState.EMPTY) 0 else state.actualDistanceMeters, chargeableDistanceMeters = if (after.meterState == MeterState.EMPTY) 0 else state.chargeableDistanceMeters, lowSpeedSeconds = if (after.meterState == MeterState.EMPTY) 0 else state.lowSpeedSeconds, chargeProgress = if (after.meterState == MeterState.EMPTY) null else state.chargeProgress, tripStartedAt = null, currentTripId = if (after.meterState == MeterState.EMPTY) null else state.currentTripId, currentTripNumber = if (after.meterState == MeterState.EMPTY) null else state.currentTripNumber) }
             }
             MeterAction.PICKUP -> {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
-                measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
+                enqueue { measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState)) }
             }
             MeterAction.REST -> if (before.meterState == MeterState.EMPTY && after.meterState == MeterState.REST && MeterRuntimeStore.snapshot.value.restIntervalId == null) startRest(after)
             MeterAction.REST_RELEASE -> finishRest("MANUAL", after)
             MeterAction.DEADHEAD -> {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
-                measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
+                enqueue { measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState)) }
                 event(DutyEventType.DEADHEAD_START)
             }
             MeterAction.RELEASE -> {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
-                measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
+                enqueue { measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState)) }
                 event(DutyEventType.DEADHEAD_END)
             }
             MeterAction.BREAK -> { MeterRuntimeStore.update { it.copy(dutyActivity = after.dutyActivity, menu = after.menu) }; event(DutyEventType.BREAK_START) }
             MeterAction.RESUME -> { MeterRuntimeStore.update { it.copy(dutyActivity = after.dutyActivity, menu = after.menu) }; event(DutyEventType.BREAK_END) }
-            MeterAction.ARRIVE -> { measurement.stop(); MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, menu = after.menu) }; event(DutyEventType.ARRIVAL); endDuty() }
+            MeterAction.ARRIVE -> { enqueue { measurement.stop() }; MeterRuntimeStore.update { it.copy(dutyLifecycle = after.dutyLifecycle, menu = after.menu) }; event(DutyEventType.ARRIVAL); endDuty() }
             MeterAction.MENU, MeterAction.BACK -> MeterRuntimeStore.update { it.copy(menu = after.menu) }
         }
     }
@@ -128,7 +132,7 @@ class MeterController internal constructor(private val context: Context, private
         if (transition.safetyRoadModeChange == null) return
         machine.setRoadMode(transition.nextMode)
         MeterRuntimeStore.update { it.copy(roadMode = transition.nextMode) }
-        measurement.updateState(transition.nextMode, measurementOccupancyState(machine.state.meterState))
+        enqueue { measurement.updateState(transition.nextMode, measurementOccupancyState(machine.state.meterState)) }
         event(DutyEventType.SAFETY_ROAD_MODE_CHANGE, transition.safetyRoadModeChange)
     }
 
@@ -199,9 +203,9 @@ class MeterController internal constructor(private val context: Context, private
 
     private fun startRest(after: jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState) {
         MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, restDistanceMeters = 0, restIntervalId = null) }
-        measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
         val session = currentSessionId() ?: return
         enqueue {
+            measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
             val db = database()
             try {
                 val id = DutyRecordRepository(db).startRestInterval(session, Instant.now(), latestValidPlace(DrivingSampleRepository(db)))
@@ -212,8 +216,8 @@ class MeterController internal constructor(private val context: Context, private
 
     private fun finishRest(reason: String, after: jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState) {
         MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
-        measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
         enqueue {
+            measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
             val db = database()
             try { MeterRuntimeStore.snapshot.value.restIntervalId?.let { DutyRecordRepository(db).finishRestInterval(it, Instant.now(), reason) } } finally { db.close() }
             MeterRuntimeStore.update { it.copy(restIntervalId = null, restDistanceMeters = 0) }

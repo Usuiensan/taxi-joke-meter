@@ -10,6 +10,9 @@ import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettings
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
+import jp.usuiensan.taxijokemeter.data.location.LocationMeasurementService
+import jp.usuiensan.taxijokemeter.data.location.MeasurementDebugSnapshot
+import jp.usuiensan.taxijokemeter.data.location.MeasurementDebugStore
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
@@ -26,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 @RunWith(AndroidJUnit4::class)
 class MeterControllerOperationOrderingTest {
@@ -46,6 +50,8 @@ class MeterControllerOperationOrderingTest {
     }
 
     @After fun tearDown() {
+        if (context.delegateServiceStarts) baseContext.stopService(Intent(baseContext, LocationMeasurementService::class.java))
+        MeasurementDebugStore.update(MeasurementDebugSnapshot())
         database.close()
         baseContext.deleteDatabase(context.databaseName)
     }
@@ -95,6 +101,34 @@ class MeterControllerOperationOrderingTest {
         assertEquals(TripStatus.VOIDED.name, database.dutyDao().findTrips(sessionId).single().status)
     }
 
+    @Test fun immediateOccupiedPaymentTotalSendsMeasurementCommandsInOrder() = runBlocking {
+        context.delegateServiceStarts = true
+        MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = sessionId))
+        val controller = MeterController(context, context.databaseName)
+        val writableDatabase = database.openHelper.writableDatabase
+
+        writableDatabase.beginTransaction()
+        try {
+            controller.dispatch(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.OCCUPIED)
+            controller.dispatch(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.PAYMENT)
+            controller.dispatch(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.TOTAL)
+        } finally {
+            writableDatabase.endTransaction()
+        }
+
+        waitUntil { context.measurementCommands.size == 5 }
+        assertEquals(
+            listOf(
+                "${LocationMeasurementService.ACTION_UPDATE_STATE}:${OccupancyState.OCCUPIED.name}",
+                "${LocationMeasurementService.ACTION_BEGIN_FARE}:null",
+                "${LocationMeasurementService.ACTION_UPDATE_STATE}:${OccupancyState.EMPTY.name}",
+                "${LocationMeasurementService.ACTION_END_FARE}:null",
+                "${LocationMeasurementService.ACTION_UPDATE_STATE}:${OccupancyState.EMPTY.name}",
+            ),
+            context.measurementCommands.toList(),
+        )
+    }
+
     @Test fun sameRoadModeDoesNotRecordAnEvent() = runBlocking {
         val controller = MeterController(context, context.databaseName)
 
@@ -124,9 +158,16 @@ class MeterControllerOperationOrderingTest {
 }
 
 private class IsolatedControllerContext(base: Context, val databaseName: String) : ContextWrapper(base) {
+    var delegateServiceStarts = false
+    val measurementCommands = CopyOnWriteArrayList<String>()
+
     override fun getApplicationContext(): Context = this
     override fun getDatabasePath(name: String) = baseContext.getDatabasePath(databaseName)
     override fun getSharedPreferences(name: String, mode: Int) = baseContext.getSharedPreferences("$databaseName-$name", mode)
-    override fun startService(service: Intent): ComponentName = ComponentName(baseContext.packageName, service.component?.className ?: "test")
-    override fun startForegroundService(service: Intent): ComponentName = startService(service)
+    override fun startService(service: Intent): ComponentName? {
+        measurementCommands += "${service.action}:${service.getStringExtra(LocationMeasurementService.EXTRA_OCCUPANCY_STATE)}"
+        return if (delegateServiceStarts) baseContext.startService(service)
+        else ComponentName(baseContext.packageName, service.component?.className ?: "test")
+    }
+    override fun startForegroundService(service: Intent): ComponentName = requireNotNull(startService(service))
 }

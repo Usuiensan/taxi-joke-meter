@@ -1,6 +1,9 @@
 package jp.usuiensan.taxijokemeter.ui.meter
 
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
+import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
+import jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState
+import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
@@ -63,6 +66,16 @@ class MeterPresentationTest {
     @Test fun emptyButtonKeepsEmptyAndLeavesOtherTransitionsUnchanged() {
         assertEquals(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.EMPTY, emptyButtonAction(MeterState.EMPTY))
         assertEquals(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.EMPTY, emptyButtonAction(MeterState.TOTAL))
+    }
+
+    @Test fun pickupEmptyKeyReturnsToEmptyMenu() {
+        val machine = MeterStateMachine(MeterRuntimeState(meterState = MeterState.PICKUP, menu = MeterMenu.NONE))
+
+        assertEquals(MeterAction.EMPTY, emptyButtonAction(MeterState.PICKUP))
+        machine.dispatch(emptyButtonAction(MeterState.PICKUP))
+
+        assertEquals(MeterState.EMPTY, machine.state.meterState)
+        assertEquals(MeterMenu.EMPTY_MENU, machine.state.menu)
     }
 
     @Test fun restAndDeadheadUseTheirReleaseSoftKeySlots() {

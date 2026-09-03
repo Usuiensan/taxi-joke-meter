@@ -25,9 +25,9 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
             MeterAction.DEPART -> state.copy(dutyLifecycle = DutyLifecycle.ACTIVE, meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
             MeterAction.EMPTY -> when (state.meterState) {
                 MeterState.EMPTY -> state.copy(menu = MeterMenu.EMPTY_MENU)
-                MeterState.OCCUPIED, MeterState.TOTAL -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
+                MeterState.OCCUPIED, MeterState.TOTAL, MeterState.PICKUP -> state.copy(meterState = MeterState.EMPTY, menu = MeterMenu.EMPTY_MENU)
                 MeterState.PAYMENT -> state
-                MeterState.DEADHEAD, MeterState.REST, MeterState.PICKUP -> state
+                MeterState.DEADHEAD, MeterState.REST -> state
             }
             MeterAction.OCCUPIED -> if (state.meterState == MeterState.DEADHEAD) state else state.copy(meterState = MeterState.OCCUPIED, menu = MeterMenu.NONE)
             MeterAction.PAYMENT -> if (state.meterState == MeterState.OCCUPIED) {

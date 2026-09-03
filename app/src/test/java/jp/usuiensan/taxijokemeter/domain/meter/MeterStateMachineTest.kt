@@ -44,7 +44,7 @@ class MeterStateMachineTest {
 
     @Test fun emptyPressOpensMenuAndDeadheadRequiresRelease() {
         val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE))
-        machine.dispatch(MeterAction.EMPTY)
+        machine.dispatch(MeterAction.MENU)
         assertEquals(MeterMenu.EMPTY_MENU, machine.state.menu)
         machine.dispatch(MeterAction.DEADHEAD)
         assertEquals(MeterState.DEADHEAD, machine.state.meterState)
@@ -76,6 +76,24 @@ class MeterStateMachineTest {
 
         machine.dispatch(MeterAction.BACK)
         assertEquals(MeterState.EMPTY, machine.state.meterState)
+        assertEquals(MeterMenu.NONE, machine.state.menu)
+    }
+
+    @Test fun emptyActionFromTotalReturnsToNormalEmptyWithoutOpeningMenu() {
+        val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE, MeterState.TOTAL))
+
+        machine.dispatch(MeterAction.EMPTY)
+
+        assertEquals(MeterState.EMPTY, machine.state.meterState)
+        assertEquals(MeterMenu.NONE, machine.state.menu)
+    }
+
+    @Test fun menuActionOnlyOpensFromEmpty() {
+        val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE, MeterState.OCCUPIED))
+
+        machine.dispatch(MeterAction.MENU)
+
+        assertEquals(MeterState.OCCUPIED, machine.state.meterState)
         assertEquals(MeterMenu.NONE, machine.state.menu)
     }
 

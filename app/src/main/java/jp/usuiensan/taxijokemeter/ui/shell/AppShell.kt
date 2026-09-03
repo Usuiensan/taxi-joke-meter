@@ -45,7 +45,8 @@ import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
 
 @Composable
 fun AppShell() {
-    var showMeter by rememberSaveable { mutableStateOf(false) }
+    var showMeter by rememberSaveable { mutableStateOf(true) }
+    var showDebug by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val activity = context as Activity
@@ -60,14 +61,21 @@ fun AppShell() {
         if (showMeter) meterController.ensureMeasurementRunning()
         onDispose { }
     }
-    BackHandler(enabled = showMeter || showSettings) {
-        if (showMeter) showMeter = false else showSettings = false
+    BackHandler(enabled = true) {
+        when {
+            showSettings -> { showSettings = false; showMeter = true }
+            showDebug -> { showDebug = false; showMeter = true }
+            showMeter && meterRuntime.menu == jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU -> meterController.dispatch(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.BACK)
+            showMeter -> activity.finish()
+            else -> showMeter = true
+        }
     }
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         when {
-            showMeter -> MeterScreen(padding, meterRuntime, meterController) { showSettings = true }
-            showSettings -> FareRuleSettingsScreen(padding) { showSettings = false }
-            else -> MeasurementDebugScreen(padding, { showMeter = true }, { showSettings = true })
+            showSettings -> FareRuleSettingsScreen(padding) { showSettings = false; showMeter = true }
+            showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, { showSettings = true; showMeter = false })
+            showMeter -> MeterScreen(padding, meterRuntime, meterController, { showSettings = true; showMeter = false }, { showDebug = true; showMeter = false })
+            else -> MeterScreen(padding, meterRuntime, meterController)
         }
     }
 }

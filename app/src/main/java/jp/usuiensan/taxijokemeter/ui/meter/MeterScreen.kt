@@ -74,7 +74,7 @@ private val MeterFontFamily = FontFamily(
 )
 
 @Composable
-fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}) {
+fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}, onOpenDebug: () -> Unit = {}) {
     CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = MeterFontFamily)) {
         Box(
             modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
@@ -90,7 +90,7 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
                         scaleY = scale
                     },
                 ) {
-                    LandscapeMeterLayout(runtime, controller, onOpenFareSettings)
+                    LandscapeMeterLayout(runtime, controller, onOpenFareSettings, onOpenDebug)
                 }
             }
         }
@@ -98,12 +98,12 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
 }
 
 @Composable
-private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit) {
-    MeterReferenceLayout(runtime, controller, onOpenFareSettings)
+private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
+    MeterReferenceLayout(runtime, controller, onOpenFareSettings, onOpenDebug)
 }
 
 @Composable
-private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit) {
+private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -118,7 +118,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
                 MeterDateHeader()
             }
             BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller)
-            BottomControls(runtime, controller, onOpenFareSettings)
+            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug)
         }
 
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -155,10 +155,6 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                 }
             } else if (runtime.menu == MeterMenu.EMPTY_MENU) {
                 Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { Text("空車メニュー", color = MeterWhite, fontSize = 28.sp) }
-            } else if (runtime.meterState == MeterState.EMPTY) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    MeterButton("メニュー", MeterWhite, Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.MENU) })
-                }
             } else if (runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL) {
                 PaymentSummaryPanel(runtime)
             } else if (runtime.meterState == MeterState.OCCUPIED) {
@@ -424,7 +420,7 @@ private fun SafetyWarningOverlay(warning: SafetyWarning, modifier: Modifier) {
 private fun Long.formatYen() = "%,d".format(this)
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit) {
+private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         softKeySlots(runtime.meterState, runtime.menu == MeterMenu.EMPTY_MENU).forEachIndexed { index, label ->
             val slotModifier = Modifier.weight(1f).height(MeterSoftKeyHeight)
@@ -435,6 +431,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                 runtime.menu == MeterMenu.EMPTY_MENU && label == "回送" -> ({ controller.dispatch(MeterAction.DEADHEAD) })
                 runtime.menu == MeterMenu.EMPTY_MENU && label == "戻る" -> ({ controller.dispatch(MeterAction.BACK) })
                 runtime.menu == MeterMenu.EMPTY_MENU && (label == "レポート" || label == "再発行") -> ({})
+                runtime.menu == MeterMenu.EMPTY_MENU && label == "デバッグ" -> ({ controller.dispatch(MeterAction.BACK); onOpenDebug() })
                 runtime.meterState == MeterState.EMPTY && runtime.menu == MeterMenu.NONE && label == "運賃制" -> onOpenFareSettings
                 runtime.meterState == MeterState.DEADHEAD && label == "解除" -> ({ controller.dispatch(MeterAction.RELEASE) })
                 runtime.meterState == MeterState.PAYMENT || runtime.meterState == MeterState.TOTAL -> ({})
@@ -446,7 +443,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
 }
 
 internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<String?> = when {
-    state == MeterState.EMPTY && emptyMenu -> listOf("回送", "レポート", "再発行", null, "戻る")
+    state == MeterState.EMPTY && emptyMenu -> listOf("回送", "レポート", "再発行", "デバッグ", "戻る")
     state == MeterState.EMPTY -> listOf("累計", "運賃制", null, null, "高速")
     else -> when (state) {
     MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地")

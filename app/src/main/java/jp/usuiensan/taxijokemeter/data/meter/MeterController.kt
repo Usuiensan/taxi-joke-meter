@@ -33,6 +33,7 @@ class MeterController(private val context: Context) {
     private var fareRule = FareRuleStore(context).load()
 
     fun ensureMeasurementRunning() {
+        if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         fareRule = FareRuleStore(context).load()
         measurement.ensureMeasurementRunning(fareRule)
     }

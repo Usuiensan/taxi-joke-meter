@@ -74,7 +74,7 @@ class MeterPresentationTest {
     }
 
     @Test fun emptyMenuUsesFixedMenuSoftKeySlots() {
-        assertEquals(listOf("回送", "レポート", "再発行", null, "戻る"), softKeySlots(MeterState.EMPTY, true))
+        assertEquals(listOf("回送", "レポート", "再発行", "デバッグ", "戻る"), softKeySlots(MeterState.EMPTY, true))
     }
 
     @Test fun roadModeButtonsMapToExistingRoadModes() {

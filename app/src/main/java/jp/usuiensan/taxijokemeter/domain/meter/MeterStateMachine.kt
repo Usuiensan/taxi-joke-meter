@@ -49,7 +49,11 @@ class MeterStateMachine(initial: MeterRuntimeState = MeterRuntimeState()) {
             MeterAction.BREAK -> state.copy(dutyActivity = DutyActivity.BREAK, menu = MeterMenu.NONE)
             MeterAction.RESUME -> state.copy(dutyActivity = DutyActivity.WORKING, menu = MeterMenu.NONE)
             MeterAction.ARRIVE -> state.copy(dutyLifecycle = DutyLifecycle.ENDED, menu = MeterMenu.NONE)
-            MeterAction.MENU -> state.copy(menu = MeterMenu.EMPTY_MENU)
+            MeterAction.MENU -> if (state.meterState == MeterState.EMPTY) {
+                state.copy(menu = MeterMenu.EMPTY_MENU)
+            } else {
+                state
+            }
             MeterAction.BACK -> state.copy(menu = MeterMenu.NONE)
         }
         return state

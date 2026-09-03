@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +31,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +49,7 @@ import jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
+import jp.usuiensan.taxijokemeter.R
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -59,24 +64,30 @@ private val IconBlack = Color(0xFF0A0A0A)
 private val MeterLogicalWidth = 900.dp
 private val MeterLogicalHeight = 400.dp
 private val MeterSoftKeyHeight = 50.dp
+private val MeterFontFamily = FontFamily(
+    Font(R.font.biz_udgothic_regular),
+    Font(R.font.biz_udgothic_bold, FontWeight.Bold),
+)
 
 @Composable
 fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val scale = minOf(
-                maxWidth.value / MeterLogicalWidth.value,
-                maxHeight.value / MeterLogicalHeight.value,
-            )
-            Box(
-                modifier = Modifier.requiredSize(MeterLogicalWidth, MeterLogicalHeight).graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                },
-            ) {
-                LandscapeMeterLayout(runtime, controller, onOpenFareSettings)
+    CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = MeterFontFamily)) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                val scale = minOf(
+                    maxWidth.value / MeterLogicalWidth.value,
+                    maxHeight.value / MeterLogicalHeight.value,
+                )
+                Box(
+                    modifier = Modifier.requiredSize(MeterLogicalWidth, MeterLogicalHeight).graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    },
+                ) {
+                    LandscapeMeterLayout(runtime, controller, onOpenFareSettings)
+                }
             }
         }
     }
@@ -169,17 +180,19 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                         val fare = formatFareAmount(runtime.fareYen)
                         Row(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 10.dp),
-                            verticalAlignment = Alignment.Bottom,
                         ) {
                             Text(
                                 fare.number,
                                 color = MeterWhite,
                                 style = TextStyle(
+                                    fontFamily = MeterFontFamily,
                                     fontSize = 76.sp,
                                     lineHeight = 82.sp,
                                     fontWeight = FontWeight.Light,
+                                    fontFeatureSettings = "tnum",
                                     platformStyle = PlatformTextStyle(includeFontPadding = true),
                                 ),
+                                modifier = Modifier.alignByBaseline(),
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Clip,
@@ -188,10 +201,13 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                                 fare.unit,
                                 color = MeterWhite,
                                 style = TextStyle(
+                                    fontFamily = MeterFontFamily,
                                     fontSize = 26.sp,
                                     lineHeight = 32.sp,
+                                    fontFeatureSettings = "tnum",
                                     platformStyle = PlatformTextStyle(includeFontPadding = true),
                                 ),
+                                modifier = Modifier.alignByBaseline(),
                                 maxLines = 1,
                                 softWrap = false,
                             )
@@ -222,12 +238,12 @@ private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
             val fare = formatFareAmount(runtime.fareYen)
             Row(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.Bottom,
             ) {
                 Text(
                     fare.number,
                     color = MeterWhite,
-                    style = TextStyle(fontSize = 68.sp, lineHeight = 74.sp, fontWeight = FontWeight.Light, platformStyle = PlatformTextStyle(includeFontPadding = true)),
+                    style = TextStyle(fontFamily = MeterFontFamily, fontSize = 68.sp, lineHeight = 74.sp, fontWeight = FontWeight.Light, fontFeatureSettings = "tnum", platformStyle = PlatformTextStyle(includeFontPadding = true)),
+                    modifier = Modifier.alignByBaseline(),
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip,
@@ -235,7 +251,8 @@ private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
                 Text(
                     fare.unit,
                     color = MeterWhite,
-                    style = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, platformStyle = PlatformTextStyle(includeFontPadding = true)),
+                    style = TextStyle(fontFamily = MeterFontFamily, fontSize = 22.sp, lineHeight = 28.sp, fontFeatureSettings = "tnum", platformStyle = PlatformTextStyle(includeFontPadding = true)),
+                    modifier = Modifier.alignByBaseline(),
                     maxLines = 1,
                     softWrap = false,
                 )

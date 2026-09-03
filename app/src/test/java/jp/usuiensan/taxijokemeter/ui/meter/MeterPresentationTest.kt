@@ -8,9 +8,11 @@ import org.junit.Test
 
 class MeterPresentationTest {
     @Test
-    fun fareAmountSeparatesLargeNumberAndSmallYenUnit() {
+    fun fareAmountFormatsRequiredDisplaySizes() {
+        assertEquals(FareAmountParts("12", "円"), formatFareAmount(12))
+        assertEquals(FareAmountParts("500", "円"), formatFareAmount(500))
         assertEquals(FareAmountParts("2,700", "円"), formatFareAmount(2_700))
-        assertEquals(FareAmountParts("114", "円"), formatFareAmount(114))
+        assertEquals(FareAmountParts("14,850", "円"), formatFareAmount(14_850))
     }
 
     @Test

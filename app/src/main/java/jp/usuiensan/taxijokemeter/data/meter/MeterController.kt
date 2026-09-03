@@ -37,6 +37,7 @@ class MeterController(private val context: Context) {
     fun dispatch(action: MeterAction) {
         if (action == MeterAction.DEPART && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         val before = machine.state
+        if (action == MeterAction.PAYMENT && !shouldProcessPayment(before.meterState)) return
         val after = machine.dispatch(action)
         when (action) {
             MeterAction.DEPART -> {
@@ -84,3 +85,6 @@ class MeterController(private val context: Context) {
 
     fun shortRoadModePress() { setRoadMode(RoadModeController().transition(MeterRuntimeStore.snapshot.value.roadMode, RoadModeAction.SHORT_PRESS).nextMode) }
 }
+
+internal fun shouldProcessPayment(state: jp.usuiensan.taxijokemeter.domain.meter.MeterState) =
+    state == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED

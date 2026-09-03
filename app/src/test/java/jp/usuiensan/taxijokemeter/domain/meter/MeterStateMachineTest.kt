@@ -28,6 +28,15 @@ class MeterStateMachineTest {
         assertEquals(MeterState.EMPTY, machine.state.meterState)
     }
 
+    @Test fun paymentFromEmptyKeepsStateUnchanged() {
+        val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE))
+
+        val before = machine.state
+        machine.dispatch(MeterAction.PAYMENT)
+
+        assertEquals(before, machine.state)
+    }
+
     @Test fun menuKeepsEmptyStateAndBackClosesMenu() {
         val machine = MeterStateMachine(MeterRuntimeState(DutyLifecycle.ACTIVE))
 

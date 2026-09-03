@@ -135,7 +135,9 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
             } else if (runtime.meterState == MeterState.OCCUPIED) {
                 Column(Modifier.fillMaxWidth()) {
                     Text("実車", color = MeterWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    runtime.chargeProgress?.let { ChargeProgressRail(it.mode, it.fraction) }
+                    if (showsChargeProgressRail(runtime.meterState)) {
+                        runtime.chargeProgress?.let { ChargeProgressRail(it.mode, it.fraction) }
+                    }
                     Box(
                         modifier = Modifier.fillMaxWidth().height(128.dp)
                             .background(
@@ -186,7 +188,9 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                     }
                 }
             }
-            Spacer(Modifier.height(6.dp).fillMaxWidth().background(MeterWhite))
+            if (showsChargeProgressRail(runtime.meterState)) {
+                Spacer(Modifier.height(6.dp).fillMaxWidth().background(MeterWhite))
+            }
         }
     }
 }
@@ -251,13 +255,21 @@ private fun Long.formatYen() = "%,d".format(this)
 
 @Composable
 private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController) {
-    val labels = if (runtime.meterState == MeterState.PAYMENT) listOf("明細", "置換", "立替", "チケット", "定額", "高速") else listOf("早朝", "高割", "障割", "予約", "経由地", "高速")
+    val labels = softKeyLabels(runtime.meterState)
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         labels.forEachIndexed { index, label ->
             MeterButton(label, if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite, Modifier.weight(1f), if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023), onClick = if (index == 5) controller::shortRoadModePress else null)
         }
     }
 }
+
+internal fun softKeyLabels(state: MeterState) = when (state) {
+    MeterState.OCCUPIED -> listOf("早朝", "高割", "障割", "予約", "経由地", "高速")
+    MeterState.PAYMENT -> listOf("明細", "置換", "立替", "チケット", "定額", "高速")
+    else -> emptyList()
+}
+
+internal fun showsChargeProgressRail(state: MeterState) = state == MeterState.OCCUPIED
 
 @Composable
 private fun MeterButton(text: String, background: Color, modifier: Modifier = Modifier, textColor: Color = MeterWhite, size: androidx.compose.ui.unit.TextUnit = 17.sp, onClick: (() -> Unit)? = null) {

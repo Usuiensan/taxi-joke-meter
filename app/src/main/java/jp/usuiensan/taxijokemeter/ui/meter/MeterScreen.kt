@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeSnapshot
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
@@ -257,7 +259,14 @@ private fun PaymentDetailRow(label: String, value: String) {
 
 @Composable
 private fun MeterStateLabel(text: String) {
-    Box(Modifier.fillMaxWidth().background(stateLabelColor(text)).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+    val shape = RoundedCornerShape(3.dp)
+    val color = stateLabelColor(text)
+    Box(
+        Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 2.dp)
+            .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.92f), color)), shape)
+            .border(1.dp, Color(0xFFB9E8F4), shape),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(text, color = MeterWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
     }
 }

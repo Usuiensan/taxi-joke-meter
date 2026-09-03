@@ -14,6 +14,7 @@ import jp.usuiensan.taxijokemeter.domain.model.DutyEventType
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
+import jp.usuiensan.taxijokemeter.domain.road.RoadModeController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +27,7 @@ class MeterController(private val context: Context) {
     private val measurement = DutyMeasurementController(context)
     private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context))
     private val machine = MeterStateMachine()
+    private val roadModeController = RoadModeController()
     private var sessionId: String? = null
     private var trip: Trip? = null
     private var fareRule = FareRuleStore(context).load()
@@ -88,8 +90,9 @@ class MeterController(private val context: Context) {
     }
 
     fun setRoadMode(mode: RoadMode) {
-        machine.setRoadMode(mode)
-        MeterRuntimeStore.update { it.copy(roadMode = mode) }
+        val transition = roadModeController.select(machine.state.roadMode, mode)
+        machine.setRoadMode(transition.nextMode)
+        MeterRuntimeStore.update { it.copy(roadMode = transition.nextMode) }
         val occupancy = if (machine.state.meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED) OccupancyState.OCCUPIED else OccupancyState.EMPTY
         measurement.updateState(mode, occupancy)
     }

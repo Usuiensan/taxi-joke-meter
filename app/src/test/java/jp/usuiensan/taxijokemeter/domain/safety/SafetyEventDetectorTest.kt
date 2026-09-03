@@ -14,7 +14,9 @@ class SafetyEventDetectorTest {
     @Test fun hardAccelerationStartsOnceAndCompletesAfterSettling() {
         val detector = SafetyEventDetector()
         assertTrue(detector.consume(sample(0, 0.0)).isEmpty())
-        assertEquals(1, detector.consume(sample(3, 8.0)).filterIsInstance<SafetyEventSignal.Started>().size)
+        val started = detector.consume(sample(3, 8.0)).filterIsInstance<SafetyEventSignal.Started>()
+        assertEquals(1, started.size)
+        assertEquals(8.0 / 3.0, started.single().accelerationMps2!!, 0.001)
         assertTrue(detector.consume(sample(4, 8.0)).isEmpty())
         assertTrue(detector.consume(sample(6, 8.0)).filterIsInstance<SafetyEventSignal.Completed>().isEmpty())
         assertEquals(1, detector.consume(sample(9, 8.0)).filterIsInstance<SafetyEventSignal.Completed>().size)
@@ -31,7 +33,9 @@ class SafetyEventDetectorTest {
     @Test fun overspeedNeedsFiveSecondsAndCompletesAfterTwoSecondsBelowRelease() {
         val detector = SafetyEventDetector()
         (0L..4L).forEach { second -> assertTrue(detector.consume(sample(second, 66.0 / 3.6)).isEmpty()) }
-        assertEquals(1, detector.consume(sample(5, 66.0 / 3.6)).filterIsInstance<SafetyEventSignal.Started>().size)
+        val started = detector.consume(sample(5, 66.0 / 3.6)).filterIsInstance<SafetyEventSignal.Started>()
+        assertEquals(1, started.size)
+        assertEquals(66, started.single().speedKmh)
         assertTrue(detector.consume(sample(6, 61.0 / 3.6)).isEmpty())
         assertEquals(1, detector.consume(sample(8, 61.0 / 3.6)).filterIsInstance<SafetyEventSignal.Completed>().size)
     }

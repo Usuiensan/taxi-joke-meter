@@ -1,6 +1,10 @@
 package jp.usuiensan.taxijokemeter.ui.meter
 
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
+import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
+import jp.usuiensan.taxijokemeter.data.meter.SafetyWarning
+import jp.usuiensan.taxijokemeter.data.meter.safetyWarningText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -71,5 +75,23 @@ class MeterPresentationTest {
 
     @Test fun emptyMenuUsesFixedMenuSoftKeySlots() {
         assertEquals(listOf("回送", "レポート", "再発行", null, "戻る"), softKeySlots(MeterState.EMPTY, true))
+    }
+
+    @Test fun roadModeButtonsMapToExistingRoadModes() {
+        assertEquals(listOf(RoadMode.GENERAL, RoadMode.HIGHWAY1, RoadMode.HIGHWAY2), roadModeButtonModes())
+        assertEquals("一般", roadModeLabel(RoadMode.GENERAL))
+        assertEquals("専用道", roadModeLabel(RoadMode.HIGHWAY1))
+        assertEquals("高速", roadModeLabel(RoadMode.HIGHWAY2))
+    }
+
+    @Test fun safetyWarningTextUsesStartedValuesAndExpiresAfterThreeSeconds() {
+        assertEquals("⚠ 急加速 (0.32G)", safetyWarningText(SafetyEventType.HARD_ACCELERATION, 3.138128, null))
+        assertEquals("⚠ 急減速 (0.41G)", safetyWarningText(SafetyEventType.HARD_DECELERATION, -4.021, null))
+        assertEquals("⚠ 速度超過 (現在 68 km/h)", safetyWarningText(SafetyEventType.OVERSPEED, null, 68))
+        val warning = SafetyWarning("test", MeterState.OCCUPIED, 1_000L, 4_000L, "text")
+        assertTrue(warning.isVisibleAt(3_999L))
+        assertFalse(warning.isVisibleAt(4_000L))
+        assertFalse(showsSafetyWarning(MeterState.PAYMENT))
+        assertFalse(showsSafetyWarning(MeterState.TOTAL))
     }
 }

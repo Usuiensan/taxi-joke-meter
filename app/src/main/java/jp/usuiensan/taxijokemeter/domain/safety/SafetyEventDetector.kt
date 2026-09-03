@@ -72,7 +72,7 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
                 else -> return emptyList()
             }
             activeAcceleration = ActiveAcceleration(type, sample, abs(value))
-            return listOf(SafetyEventSignal.Started(type))
+            return listOf(SafetyEventSignal.Started(type, accelerationMps2 = value))
         }
 
         active.peak = max(active.peak, abs(value))
@@ -123,7 +123,7 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
         overspeedAboveSinceMillis = null
         overspeedStartedSample = null
         overspeedPeak = 0.0
-        return listOf(SafetyEventSignal.Started(SafetyEventType.OVERSPEED))
+        return listOf(SafetyEventSignal.Started(SafetyEventType.OVERSPEED, speedKmh = (sample.speedMps!! * 3.6).toInt()))
     }
 
     private fun event(type: SafetyEventType, started: DrivingSample, ended: DrivingSample, peak: Double, roadMode: jp.usuiensan.taxijokemeter.domain.model.RoadMode) = SafetyEvent(

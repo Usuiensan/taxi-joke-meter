@@ -6,9 +6,16 @@ import jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class MeterRuntimeSnapshot(
     val dutyLifecycle: DutyLifecycle = DutyLifecycle.BEFORE_DEPARTURE,
@@ -26,11 +33,38 @@ data class MeterRuntimeSnapshot(
     val dutySessionId: String? = null,
     val tripStartedAt: java.time.Instant? = null,
     val chargeProgress: ChargeProgressUiState? = null,
+    val safetyWarning: SafetyWarning? = null,
 )
+
+data class SafetyWarning(
+    val id: String,
+    val meterState: MeterState,
+    val shownAtElapsedRealtimeMillis: Long,
+    val expiresAtElapsedRealtimeMillis: Long,
+    val text: String,
+) {
+    fun isVisibleAt(nowElapsedRealtimeMillis: Long) = nowElapsedRealtimeMillis < expiresAtElapsedRealtimeMillis
+}
+
+fun safetyWarningText(type: SafetyEventType, accelerationMps2: Double?, speedKmh: Int?): String = when (type) {
+    SafetyEventType.HARD_ACCELERATION -> "⚠ 急加速 (%.2fG)".format(kotlin.math.abs(accelerationMps2 ?: 0.0) / 9.80665)
+    SafetyEventType.HARD_DECELERATION -> "⚠ 急減速 (%.2fG)".format(kotlin.math.abs(accelerationMps2 ?: 0.0) / 9.80665)
+    SafetyEventType.OVERSPEED -> "⚠ 速度超過 (現在 ${speedKmh ?: 0} km/h)"
+}
 
 object MeterRuntimeStore {
     private val _snapshot = MutableStateFlow(MeterRuntimeSnapshot())
     val snapshot: StateFlow<MeterRuntimeSnapshot> = _snapshot.asStateFlow()
+    private val warningScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     fun update(transform: (MeterRuntimeSnapshot) -> MeterRuntimeSnapshot) { _snapshot.value = transform(_snapshot.value) }
     fun resetMeter() { update { it.copy(fareYen = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, chargeProgress = null) } }
+
+    fun showSafetyWarning(text: String, nowElapsedRealtimeMillis: Long) {
+        val warning = SafetyWarning(UUID.randomUUID().toString(), snapshot.value.meterState, nowElapsedRealtimeMillis, nowElapsedRealtimeMillis + 3_000L, text)
+        update { it.copy(safetyWarning = warning) }
+        warningScope.launch {
+            delay(3_000L)
+            update { if (it.safetyWarning?.id == warning.id) it.copy(safetyWarning = null) else it }
+        }
+    }
 }

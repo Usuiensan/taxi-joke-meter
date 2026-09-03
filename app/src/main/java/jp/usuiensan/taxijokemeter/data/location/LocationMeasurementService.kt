@@ -35,6 +35,7 @@ import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSignal
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
+import jp.usuiensan.taxijokemeter.data.meter.safetyWarningText
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
 import jp.usuiensan.taxijokemeter.domain.fare.FareCalculator
@@ -94,7 +95,13 @@ class LocationMeasurementService : Service() {
                 repository.save(sample)
                 safetyEventDetector.consume(sample).forEach { signal ->
                     when (signal) {
-                        is SafetyEventSignal.Started -> audioCuePlayer.enqueue(signal.type.toMeterAudioCue())
+                        is SafetyEventSignal.Started -> {
+                            audioCuePlayer.enqueue(signal.type.toMeterAudioCue())
+                            MeterRuntimeStore.showSafetyWarning(
+                                safetyWarningText(signal.type, signal.accelerationMps2, signal.speedKmh),
+                                SystemClock.elapsedRealtime(),
+                            )
+                        }
                         is SafetyEventSignal.Completed -> safetyEventRepository.insert(signal.event)
                     }
                 }

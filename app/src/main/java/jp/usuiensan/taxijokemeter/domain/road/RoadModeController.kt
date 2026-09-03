@@ -11,6 +11,8 @@ data class RoadModeTransition(
 )
 
 class RoadModeController {
+    fun select(current: RoadMode, target: RoadMode) = RoadModeTransition(target, if (current == target) null else SafetyRoadModeChange(current, target))
+
     fun transition(current: RoadMode, action: RoadModeAction): RoadModeTransition {
         val next = when (action) {
             RoadModeAction.LONG_PRESS -> RoadMode.GENERAL

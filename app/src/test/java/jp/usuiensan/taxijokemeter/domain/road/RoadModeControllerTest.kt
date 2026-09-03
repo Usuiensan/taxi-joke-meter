@@ -8,6 +8,11 @@ import org.junit.Test
 class RoadModeControllerTest {
     private val controller = RoadModeController()
 
+    @Test fun directSelectionUsesExistingRoadModes() {
+        assertEquals(RoadMode.HIGHWAY2, controller.select(RoadMode.GENERAL, RoadMode.HIGHWAY2).nextMode)
+        assertEquals(null, controller.select(RoadMode.HIGHWAY1, RoadMode.HIGHWAY1).safetyRoadModeChange)
+    }
+
     @Test fun shortPressCyclesHighwayModes() {
         assertEquals(RoadMode.HIGHWAY1, controller.transition(RoadMode.GENERAL, RoadModeAction.SHORT_PRESS).nextMode)
         assertEquals(RoadMode.HIGHWAY2, controller.transition(RoadMode.HIGHWAY1, RoadModeAction.SHORT_PRESS).nextMode)

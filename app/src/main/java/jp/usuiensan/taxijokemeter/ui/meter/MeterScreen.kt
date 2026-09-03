@@ -50,6 +50,8 @@ import jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
+import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.data.meter.SafetyWarning
 import jp.usuiensan.taxijokemeter.R
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -114,16 +116,27 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
             if (showsDateTime(runtime.meterState, false)) {
                 MeterDateHeader()
             }
-            BalancePanel(Modifier.height(228.dp), runtime, controller)
-            Spacer(Modifier.weight(1f))
+            BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller)
             BottomControls(runtime, controller, onOpenFareSettings)
         }
 
-        Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MeterButton("空車", MeterRed, Modifier.fillMaxWidth(), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.EMPTY) }))
-            MeterButton("実車", Color(0xFF2C9ED9), Modifier.fillMaxWidth(), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.OCCUPIED) }))
-            MeterButton("支払", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.PAYMENT) }))
-            MeterButton("合計", MeterWhite, Modifier.fillMaxWidth(), Color(0xFF1C2023), onClick = if (runtime.meterState == MeterState.DEADHEAD) null else ({ controller.dispatch(MeterAction.TOTAL) }))
+        Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                Triple("空車", MeterRed, if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.EMPTY) } }),
+                Triple("実車", Color(0xFF2C9ED9), if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.OCCUPIED) } }),
+                Triple("支払", MeterWhite, if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.PAYMENT) } }),
+                Triple("合計", MeterWhite, if (runtime.meterState == MeterState.DEADHEAD) null else { { controller.dispatch(MeterAction.TOTAL) } }),
+            ).forEach { (label, color, action) ->
+                MeterButton(label, color, Modifier.weight(1f).fillMaxWidth(), if (color == MeterWhite) Color(0xFF1C2023) else MeterWhite, onClick = action)
+            }
+            roadModeButtonModes().forEach { mode ->
+                MeterButton(
+                    roadModeLabel(mode),
+                    if (runtime.roadMode == mode) Color(0xFF35C75A) else Color(0xFF1C2023),
+                    Modifier.weight(1f).fillMaxWidth(),
+                    onClick = { controller.setRoadMode(mode) },
+                )
+            }
         }
     }
 }
@@ -136,11 +149,11 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (runtime.meterState == MeterState.DEADHEAD) {
-                Box(Modifier.fillMaxWidth().height(160.dp)) {
+                Box(Modifier.fillMaxWidth().weight(1f)) {
                     Text("回送中", color = MeterWhite, fontSize = 36.sp, modifier = Modifier.align(Alignment.Center))
                 }
             } else if (runtime.menu == MeterMenu.EMPTY_MENU) {
-                Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { Text("空車メニュー", color = MeterWhite, fontSize = 28.sp) }
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { Text("空車メニュー", color = MeterWhite, fontSize = 28.sp) }
             } else if (runtime.meterState == MeterState.EMPTY) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     MeterButton("メニュー", MeterWhite, Modifier.width(128.dp), Color(0xFF1C2023), onClick = { controller.dispatch(MeterAction.MENU) })
@@ -152,8 +165,8 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                     if (showsChargeProgressRail(runtime.meterState)) {
                         runtime.chargeProgress?.let { ChargeProgressRail(it.mode, it.fraction) }
                     }
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(128.dp)
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth().weight(1f)
                             .background(
                                 androidx.compose.ui.graphics.Brush.verticalGradient(
                                     0.0f to Color.Transparent,
@@ -163,6 +176,7 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                             ),
                         contentAlignment = Alignment.BottomCenter,
                     ) {
+                        val fareFontSize = (maxHeight.value * 0.38f).coerceIn(100f, 150f).sp
                         Text(
                             "運賃",
                             color = MeterWhite,
@@ -178,8 +192,8 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                                 color = MeterWhite,
                                 style = TextStyle(
                                     fontFamily = MeterFontFamily,
-                                    fontSize = 76.sp,
-                                    lineHeight = 82.sp,
+                                    fontSize = fareFontSize,
+                                    lineHeight = fareFontSize * 1.08f,
                                     fontWeight = FontWeight.Light,
                                     fontFeatureSettings = "tnum",
                                     platformStyle = PlatformTextStyle(includeFontPadding = true),
@@ -202,8 +216,10 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                                 modifier = Modifier.alignByBaseline(),
                                 maxLines = 1,
                                 softWrap = false,
+                                overflow = TextOverflow.Clip,
                             )
                         }
+                        runtime.safetyWarning?.takeIf { showsSafetyWarning(runtime.meterState) }?.let { SafetyWarningOverlay(it, Modifier.align(Alignment.TopCenter)) }
                     }
                 }
             }
@@ -352,6 +368,27 @@ private fun ChargeProgressRail(mode: ChargeProgressMode, fraction: Float) {
 internal data class FareAmountParts(val number: String, val unit: String)
 
 internal fun formatFareAmount(yen: Long) = FareAmountParts(yen.formatYen(), "円")
+
+internal fun roadModeButtonModes() = listOf(RoadMode.GENERAL, RoadMode.HIGHWAY1, RoadMode.HIGHWAY2)
+
+internal fun roadModeLabel(mode: RoadMode) = when (mode) {
+    RoadMode.GENERAL -> "一般"
+    RoadMode.HIGHWAY1 -> "専用道"
+    RoadMode.HIGHWAY2 -> "高速"
+}
+
+internal fun showsSafetyWarning(state: MeterState) = state != MeterState.PAYMENT && state != MeterState.TOTAL
+
+@Composable
+private fun SafetyWarningOverlay(warning: SafetyWarning, modifier: Modifier) {
+    Box(
+        modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 30.dp)
+            .background(Color(0xCC101417), RoundedCornerShape(4.dp)).padding(10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(warning.text, color = MeterWhite, fontSize = 26.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+    }
+}
 
 private fun Long.formatYen() = "%,d".format(this)
 

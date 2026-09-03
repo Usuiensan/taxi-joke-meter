@@ -34,6 +34,10 @@ data class SafetyEvent(
 )
 
 sealed interface SafetyEventSignal {
-    data class Started(val type: SafetyEventType) : SafetyEventSignal
+    data class Started(
+        val type: SafetyEventType,
+        val accelerationMps2: Double? = null,
+        val speedKmh: Int? = null,
+    ) : SafetyEventSignal
     data class Completed(val event: SafetyEvent) : SafetyEventSignal
 }

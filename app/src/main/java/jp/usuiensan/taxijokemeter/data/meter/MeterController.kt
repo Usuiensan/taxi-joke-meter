@@ -28,12 +28,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.util.UUID
 
-class MeterController(private val context: Context) {
+class MeterController internal constructor(private val context: Context, private val databaseName: String = "duty.db") {
     @OptIn(ExperimentalCoroutinesApi::class)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val operationMutex = Mutex()
     private val measurement = DutyMeasurementController(context)
     private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context))
     private val machine = MeterStateMachine()
@@ -74,21 +77,24 @@ class MeterController(private val context: Context) {
             MeterAction.PAYMENT -> {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
                 measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
-                activeTripId()?.let { tripId -> scope.launch {
-                    val db = DutyDatabase.build(context)
+                enqueue {
+                    val tripId = activeTripId() ?: return@enqueue
+                    val db = database()
                     try { DutyRecordRepository(db).upsertDropoff(tripId, latestValidPlace(DrivingSampleRepository(db))) } finally { db.close() }
-                } }
+                }
             }
             MeterAction.TOTAL -> {
+                val value = MeterRuntimeStore.snapshot.value
                 measurement.endFareMeasurement()
                 measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
                 event(DutyEventType.DROPOFF)
-                finishTrip(TripStatus.COMPLETED, true)
+                enqueue { finishTrip(TripStatus.COMPLETED, true, value) }
             }
             MeterAction.EMPTY -> {
                 if (before.meterState == MeterState.OCCUPIED) {
-                    finishTrip(TripStatus.VOIDED, false)
+                    val value = MeterRuntimeStore.snapshot.value
+                    enqueue { finishTrip(TripStatus.VOIDED, false, value) }
                     measurement.endFareMeasurement()
                 }
                 measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
@@ -98,7 +104,7 @@ class MeterController(private val context: Context) {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
                 measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
             }
-            MeterAction.REST -> startRest(after)
+            MeterAction.REST -> if (before.meterState == MeterState.EMPTY && after.meterState == MeterState.REST && MeterRuntimeStore.snapshot.value.restIntervalId == null) startRest(after)
             MeterAction.REST_RELEASE -> finishRest("MANUAL", after)
             MeterAction.DEADHEAD -> {
                 MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
@@ -131,22 +137,23 @@ class MeterController(private val context: Context) {
     }
 
     fun changePassengerCount(passengerCount: Int) {
+        if (machine.state.meterState !in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) return
         val count = clampPassengerCount(passengerCount)
-        val tripId = activeTripId() ?: return
         MeterRuntimeStore.update { it.copy(passengerCount = count) }
-        scope.launch {
-            val db = DutyDatabase.build(context)
+        enqueue {
+            val tripId = activeTripId() ?: return@enqueue
+            val db = database()
             try { DutyRecordRepository(db).updatePassengerCount(tripId, count) } finally { db.close() }
         }
     }
 
     fun addWaypoint() {
         if (machine.state.meterState != MeterState.OCCUPIED) return
-        val tripId = activeTripId() ?: return
-        scope.launch {
-            val db = DutyDatabase.build(context)
+        enqueue {
+            val tripId = activeTripId() ?: return@enqueue
+            val db = database()
             try {
-                val place = latestValidPlace(DrivingSampleRepository(db)) ?: return@launch
+                val place = latestValidPlace(DrivingSampleRepository(db)) ?: return@enqueue
                 DutyRecordRepository(db).addWaypoint(tripId, place)
                 MeterRuntimeStore.update { it.copy(waypointCount = it.waypointCount + 1) }
             } finally { db.close() }
@@ -156,11 +163,11 @@ class MeterController(private val context: Context) {
     fun togglePickupFee() {
         if (machine.state.meterState !in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) return
         val amount = TripChargeSettingsStore(context).load().pickupFeeYen
-        val tripId = activeTripId() ?: return
         if (amount <= 0) return
         MeterRuntimeStore.update { it.copy(pickupFeeApplied = true) }
-        scope.launch {
-            val db = DutyDatabase.build(context)
+        enqueue {
+            val tripId = activeTripId() ?: return@enqueue
+            val db = database()
             try { DutyRecordRepository(db).addChargeIfAbsent(tripId, "PICKUP_FEE", amount, Instant.now()) } finally { db.close() }
         }
     }
@@ -172,8 +179,8 @@ class MeterController(private val context: Context) {
         val pendingReservation = MeterRuntimeStore.snapshot.value.pendingReservation
         MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, tripStartedAt = now, fareYen = fareRule.initialFareYen, actualDistanceMeters = 0, chargeableDistanceMeters = 0, lowSpeedSeconds = 0, currentTripId = null, currentTripNumber = null, chargeProgress = ChargeProgressMapper.initial(fareRule, it.latestSpeedMps), passengerCount = 1, waypointCount = 0, pickupFeeApplied = false, restIntervalId = if (before == MeterState.REST) it.restIntervalId else null, restDistanceMeters = if (before == MeterState.REST) it.restDistanceMeters else 0) }
         val session = currentSessionId() ?: return
-        scope.launch {
-            val db = DutyDatabase.build(context)
+        enqueue {
+            val db = database()
             try {
                 val records = DutyRecordRepository(db)
                 if (before == MeterState.REST) MeterRuntimeStore.snapshot.value.restIntervalId?.let { records.finishRestInterval(it, now, "OCCUPIED_STARTED") }
@@ -194,8 +201,8 @@ class MeterController(private val context: Context) {
         MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu, restDistanceMeters = 0, restIntervalId = null) }
         measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
         val session = currentSessionId() ?: return
-        scope.launch {
-            val db = DutyDatabase.build(context)
+        enqueue {
+            val db = database()
             try {
                 val id = DutyRecordRepository(db).startRestInterval(session, Instant.now(), latestValidPlace(DrivingSampleRepository(db)))
                 MeterRuntimeStore.update { if (it.restIntervalId == null) it.copy(restIntervalId = id) else it }
@@ -206,30 +213,32 @@ class MeterController(private val context: Context) {
     private fun finishRest(reason: String, after: jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState) {
         MeterRuntimeStore.update { it.copy(meterState = after.meterState, menu = after.menu) }
         measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
-        scope.launch {
-            val db = DutyDatabase.build(context)
+        enqueue {
+            val db = database()
             try { MeterRuntimeStore.snapshot.value.restIntervalId?.let { DutyRecordRepository(db).finishRestInterval(it, Instant.now(), reason) } } finally { db.close() }
             MeterRuntimeStore.update { it.copy(restIntervalId = null, restDistanceMeters = 0) }
         }
     }
 
-    private fun activeTripId(): String? = if (machine.state.meterState in setOf(MeterState.OCCUPIED, MeterState.PAYMENT)) trip?.id ?: MeterRuntimeStore.snapshot.value.currentTripId else null
+    private fun activeTripId(): String? = trip?.id ?: MeterRuntimeStore.snapshot.value.currentTripId
     private fun currentSessionId(): String? = sessionId ?: MeterRuntimeStore.snapshot.value.dutySessionId
     private suspend fun latestValidPlace(samples: DrivingSampleRepository): RecordedPlace? {
         val session = currentSessionId() ?: return null
         return samples.latestValidByDutySessionId(session)?.toRecordedPlace()
     }
 
-    private fun finishTrip(status: TripStatus, revenueIncluded: Boolean) {
+    private suspend fun finishTrip(status: TripStatus, revenueIncluded: Boolean, value: MeterRuntimeSnapshot) {
         val current = trip ?: return
-        val value = MeterRuntimeStore.snapshot.value
         val completed = current.copy(dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.fareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded, actualDistanceMeters = value.actualDistanceMeters, chargeableDistanceMeters = value.chargeableDistanceMeters, meteredFareYen = value.fareYen, totalFareYen = value.fareYen)
-        scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).finishTrip(completed, status, revenueIncluded) } finally { db.close() } }
+        val db = database()
+        try { DutyRecordRepository(db).finishTrip(completed, status, revenueIncluded) } finally { db.close() }
         trip = null
     }
 
-    private fun event(type: DutyEventType, modeChange: SafetyRoadModeChange? = null) { val session = currentSessionId() ?: return; scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).appendEvent(session, DutyEvent(UUID.randomUUID().toString(), type, Instant.now(), null, null, modeChange)) } finally { db.close() } } }
-    private fun endDuty() { val session = currentSessionId() ?: return; scope.launch { val db = DutyDatabase.build(context); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }
+    private fun enqueue(operation: suspend () -> Unit) { scope.launch { operationMutex.withLock { operation() } } }
+    private fun database() = DutyDatabase.build(context, databaseName)
+    private fun event(type: DutyEventType, modeChange: SafetyRoadModeChange? = null) { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).appendEvent(session, DutyEvent(UUID.randomUUID().toString(), type, Instant.now(), null, null, modeChange)) } finally { db.close() } } }
+    private fun endDuty() { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }
 }
 
 private fun DrivingSample.toRecordedPlace() = RecordedPlace(latitude, longitude, accuracyMeters, timestamp, null, LocationPrecision.POINT, LocationSource.GPS)

@@ -34,3 +34,38 @@
 
 - Connected instrumentation/device/GPX verification was not run in Task 3; it remains the Task 6 acceptance boundary.
 - The build reports pre-existing toolchain/SDK warnings for KSP and the Android 37 platform location; neither was changed in this task.
+
+## Fix round 1 status (2026-09-04, interrupted)
+
+### Added regressions
+
+- `MeterControllerOperationOrderingTest`: repeated REST, immediate `PAYMENT`/`TOTAL`/`VOIDED`, passenger/waypoint/pickup-fee ordering, and unchanged RoadMode.
+- `RestDistanceAccumulatorTest`: sub-metre REST segments retain fractional metres.
+- `MeasurementRuntimeStateTest`: sub-metre REST distance is retained across serialized samples.
+
+### Test output
+
+- RED: `./gradlew.bat :app:testDebugUnitTest --tests '*RestDistanceAccumulatorTest' --no-daemon` — `subMeterSegmentsAccumulateWithoutTruncation` failed as expected while `Long` truncation was present (3 tests, 1 failed).
+- RED: `./gradlew.bat :app:testDebugUnitTest --tests '*MeasurementRuntimeStateTest' --tests '*RestDistanceAccumulatorTest' --no-daemon` — test compilation failed as expected because `restDistanceMeters` did not yet exist.
+- RED: `./gradlew.bat :app:connectedDebugAndroidTest --project-prop 'android.testInstrumentationRunnerArguments.class=jp.usuiensan.taxijokemeter.data.meter.MeterControllerOperationOrderingTest' --no-daemon` — before serialization, 3 failures: repeated REST timed out; immediate trip ordering had no completed Trip; immediate VOIDED timed out.
+- Partial GREEN before the final serialization edit: the repeated-REST regression passed; the connected suite still failed the two immediate-ordering regressions, demonstrating that `limitedParallelism(1)` alone did not serialize suspended Room operations.
+- Unit GREEN before the final serialization edit: `./gradlew.bat :app:testDebugUnitTest --tests '*MeasurementRuntimeStateTest' --tests '*RestDistanceAccumulatorTest' --tests '*MeterControllerOperationsTest' --no-daemon` — PASS.
+- Final connected command after adding the `Mutex` operation gate: `./gradlew.bat :app:connectedDebugAndroidTest --project-prop 'android.testInstrumentationRunnerArguments.class=jp.usuiensan.taxijokemeter.data.meter.MeterControllerOperationOrderingTest' --no-daemon` — interrupted by the user before a test result. Only its resolved Gradle processes (PIDs 476 and 47432) were stopped.
+- Post-interruption compile: `./gradlew.bat :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin --no-daemon` — PASS (`BUILD SUCCESSFUL in 11s`, exit 0).
+- Post-interruption `git diff --check` — PASS (exit 0; only LF/CRLF warnings).
+
+### Conclusion
+
+- The working tree compiles and remains coherent, but Fix round 1 is intentionally uncommitted.
+- Review finding 1 has a passing regression before the final serialization edit. Findings 2 and 4 have compiled implementations but no completed post-change instrumentation result. Finding 3 has passing focused unit coverage before that edit. Therefore the review findings are **not fully verified as fixed**.
+
+## Fix round 2 verification (2026-09-04)
+
+- Focused ordering instrumentation: `.\gradlew.bat :app:connectedDebugAndroidTest --project-prop 'android.testInstrumentationRunnerArguments.class=jp.usuiensan.taxijokemeter.data.meter.MeterControllerOperationOrderingTest' --no-daemon` — PASS (`BUILD SUCCESSFUL in 24s`, exit 0). All 4 tests finished on both `Pixel_8(AVD) - 17` (`emulator-5554`) and `Pixel 10a - 17` (`5B181JEA300393`).
+- Focused unit: `.\gradlew.bat :app:testDebugUnitTest --tests '*MeasurementRuntimeStateTest' --tests '*RestDistanceAccumulatorTest' --tests '*MeterControllerOperationsTest' --no-daemon` — PASS (`BUILD SUCCESSFUL in 23s`, exit 0).
+- Full unit/build: `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon` — PASS (`BUILD SUCCESSFUL in 13s`, exit 0).
+- The existing KSP version and Android 37 platform-location warnings were emitted unchanged; no UI, migration, external API, SDK, or unrelated file was modified.
+
+### Conclusion
+
+- Repeated REST idempotence, ordered immediate Controller persistence through PAYMENT/TOTAL/VOIDED, fractional REST distance, and single-owner main-looper runtime-state updates are verified by the focused regressions and completed builds.

@@ -74,11 +74,10 @@ class LocationMeasurementService : Service() {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
-            val rest = MeterRuntimeStore.snapshot.value.takeIf { runtimeState.sampleState.occupancyState == OccupancyState.REST && it.restIntervalId != null }
-            val restDelta = if (runtimeState.previousSample?.occupancyState == OccupancyState.REST) RestDistanceAccumulator.add(runtimeState.previousSample, sample) else 0L
-            val restDistance = rest?.restDistanceMeters?.plus(restDelta)
             val accumulation = if (sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
             runtimeState = runtimeState.advance(sample)
+            val restId = MeterRuntimeStore.snapshot.value.restIntervalId.takeIf { sample.occupancyState == OccupancyState.REST }
+            val restDistance = runtimeState.restDistanceMeters.takeIf { restId != null }
             MeasurementDebugStore.update { it.copy(health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()), latestAccuracyMeters = sample.accuracyMeters, latestSpeedMps = sample.speedMps, roadMode = sample.roadMode.name) }
             MeterRuntimeStore.update { current -> current.copy(
                 roadMode = sample.roadMode,
@@ -89,7 +88,7 @@ class LocationMeasurementService : Service() {
                 actualDistanceMeters = accumulation?.actualDistanceMeters ?: current.actualDistanceMeters,
                 lowSpeedSeconds = accumulation?.lowSpeedSeconds ?: current.lowSpeedSeconds,
                 fareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.fareYen,
-                restDistanceMeters = if (restDistance != null) restDistance else current.restDistanceMeters,
+                restDistanceMeters = restDistance?.toLong() ?: current.restDistanceMeters,
                 chargeProgress = if (sample.isValid) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
                     val mode = sample.speedMps?.let { speed ->
@@ -100,20 +99,12 @@ class LocationMeasurementService : Service() {
             ) }
             scope.launch(sampleProcessingDispatcher) {
                 repository.save(sample)
-                if (rest != null && restDistance != null) {
+                if (restId != null && restDistance != null) {
                     val records = DutyRecordRepository(database)
-                    records.updateRestDistance(rest.restIntervalId!!, restDistance)
+                    records.updateRestDistance(restId, restDistance.toLong())
                     if (restDistance >= REST_DISTANCE_LIMIT_METERS) {
-                        records.finishRestInterval(rest.restIntervalId, Instant.now(), "AUTO_DISTANCE_1KM")
-                        runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.EMPTY)
-                        MeterRuntimeStore.update { current ->
-                            if (current.restIntervalId == rest.restIntervalId) current.copy(
-                                meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY,
-                                menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU,
-                                restIntervalId = null,
-                                restDistanceMeters = restDistance,
-                            ) else current
-                        }
+                        records.finishRestInterval(restId, Instant.now(), "AUTO_DISTANCE_1KM")
+                        healthHandler.post { finishRestAutomatically(restId, restDistance) }
                     }
                 }
                 safetyEventDetector.consume(sample).forEach { signal ->
@@ -222,6 +213,17 @@ class LocationMeasurementService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun finishRestAutomatically(restId: String, restDistance: Double) {
+        if (runtimeState.sampleState.occupancyState != OccupancyState.REST || MeterRuntimeStore.snapshot.value.restIntervalId != restId) return
+        runtimeState = runtimeState.updateState(runtimeState.sampleState.roadMode, OccupancyState.EMPTY)
+        MeterRuntimeStore.update { current -> current.copy(
+            meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY,
+            menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU,
+            restIntervalId = null,
+            restDistanceMeters = restDistance.toLong(),
+        ) }
+    }
 
     private fun ensureFareMeasurementInitialized(): FareMeasurementSession? {
         if (fareMeasurement == null) {

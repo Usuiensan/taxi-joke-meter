@@ -15,7 +15,14 @@ class RestDistanceAccumulatorTest {
     }
 
     @Test fun invalidRestSegmentAddsNothing() {
-        assertEquals(0, RestDistanceAccumulator.add(sample(35.0, 139.0, MeasurementQuality.VALID), sample(35.01, 139.0, MeasurementQuality.STALE)))
+        assertEquals(0.0, RestDistanceAccumulator.add(sample(35.0, 139.0, MeasurementQuality.VALID), sample(35.01, 139.0, MeasurementQuality.STALE)), 0.0)
+    }
+
+    @Test fun subMeterSegmentsAccumulateWithoutTruncation() {
+        val first = sample(35.0, 139.0, MeasurementQuality.VALID)
+        val second = sample(35.000004, 139.0, MeasurementQuality.VALID)
+
+        assertTrue(RestDistanceAccumulator.add(first, second) in 0.4..0.5)
     }
 
     private fun sample(latitude: Double, longitude: Double, quality: MeasurementQuality) = DrivingSample(

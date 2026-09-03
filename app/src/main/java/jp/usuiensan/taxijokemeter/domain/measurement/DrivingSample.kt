@@ -31,8 +31,8 @@ val RoadMode.safetyLimitKmh: Int
     get() = safety.limitKmh
 
 object RestDistanceAccumulator {
-    fun add(previous: DrivingSample?, current: DrivingSample): Long =
-        if (previous?.isValid == true && current.isValid) segmentDistanceMeters(previous, current).toLong() else 0
+    fun add(previous: DrivingSample?, current: DrivingSample): Double =
+        if (previous?.isValid == true && current.isValid) segmentDistanceMeters(previous, current) else 0.0
 }
 
 internal fun segmentDistanceMeters(first: DrivingSample, second: DrivingSample): Double {

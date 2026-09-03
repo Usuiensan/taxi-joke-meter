@@ -74,6 +74,7 @@ class DutyRecordRepository(private val database: DutyDatabase) {
     }
 
     suspend fun addChargeIfAbsent(tripId: String, type: String, amountYen: Long, appliedAt: Instant, label: String? = null) = database.withTransaction {
+        if (amountYen == 0L) return@withTransaction
         val dao = database.dutyDao()
         if (dao.findTripCharges(tripId).none { it.type == type }) {
             dao.insertTripCharge(TripChargeEntity(UUID.randomUUID().toString(), tripId, type, amountYen, appliedAt, label))

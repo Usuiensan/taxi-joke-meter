@@ -31,3 +31,40 @@ Task 2 brief に従い、既存 Room v9 の `DutyDao` と `DutyRecordRepository`
 - `addChargeIfAbsent` の charge type は既存スキーマどおり String とし、列挙型は追加していない。
 - 住所補完の実処理、MeterController/GPS 接続、実機 UI 受入は Task 3 以降の範囲で未実施。
 - 既存の未追跡 `.superpowers/sdd/trip-operation-connection/` ファイルは変更していない。
+
+## Round 1 fix: zero-valued charge
+
+レビュー指摘により、`addChargeIfAbsent` が `amountYen == 0` の PICKUP_FEE / RESERVATION 設定でも行を作成する仕様不一致を確認した。`zeroAmountChargeIsNotInserted` を先に追加し、現行実装で両端末のテストが失敗することを確認した。
+
+RED の実測出力:
+
+```text
+DutyRecordRepositoryTest > zeroAmountChargeIsNotInserted[Pixel 10a - 17] FAILED
+DutyRecordRepositoryTest > zeroAmountChargeIsNotInserted[Pixel_8(AVD) - 17] FAILED
+java.lang.AssertionError
+at jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepositoryTest.zeroAmountChargeIsNotInserted(DutyRecordRepositoryTest.kt:125)
+at jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepositoryTest$zeroAmountChargeIsNotInserted$1.invokeSuspend(DutyRecordRepositoryTest.kt:130)
+Tests on Pixel 10a - 17 failed: There was 1 failure(s).
+Tests on Pixel_8(AVD) - 17 failed: There was 1 failure(s).
+> Task :app:connectedDebugAndroidTest FAILED
+BUILD FAILED in 14s
+```
+
+修正は `addChargeIfAbsent` の `withTransaction` ブロック冒頭に `if (amountYen == 0L) return@withTransaction` を追加しただけである。
+
+GREEN / covering test の実測出力:
+
+```text
+Command: .\gradlew.bat :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepositoryTest'
+Starting 11 tests on Pixel 10a - 17
+Finished 11 tests on Pixel 10a - 17
+Starting 11 tests on Pixel_8(AVD) - 17
+Finished 11 tests on Pixel_8(AVD) - 17
+> Task :app:connectedDebugAndroidTest
+BUILD SUCCESSFUL in 18s
+
+Command: git diff --check
+Result: PASS
+```
+
+この round 1 fix は `DutyRecordRepository.kt`、`DutyRecordRepositoryTest.kt`、本 report のみを変更し、未追跡ファイルは保持した。

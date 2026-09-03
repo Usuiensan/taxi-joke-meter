@@ -122,6 +122,14 @@ class DutyRecordRepositoryTest {
         assertEquals(1, database.dutyDao().findTripCharges(trip.id).size)
     }
 
+    @Test fun zeroAmountChargeIsNotInserted() = runBlocking {
+        val trip = createTrip()
+
+        repository.addChargeIfAbsent(trip.id, "PICKUP_FEE", 0, trip.pickupAt, "迎車")
+
+        assertTrue(database.dutyDao().findTripCharges(trip.id).isEmpty())
+    }
+
     @Test fun waypointsUseOneBasedSequences() = runBlocking {
         val trip = createTrip()
         val place = place(trip.pickupAt)

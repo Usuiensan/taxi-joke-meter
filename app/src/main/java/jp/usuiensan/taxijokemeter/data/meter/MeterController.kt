@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
+import jp.usuiensan.taxijokemeter.data.duty.TripPlaceEntity
 import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
+import jp.usuiensan.taxijokemeter.data.location.AndroidReverseGeocoder
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
@@ -38,6 +40,7 @@ class MeterController internal constructor(private val context: Context, private
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val operationMutex = Mutex()
     private val measurement = DutyMeasurementController(context)
+    private val reverseGeocoder = AndroidReverseGeocoder(context)
     private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context))
     private val machine = MeterStateMachine()
     private val roadModeController = RoadModeController()
@@ -80,7 +83,10 @@ class MeterController internal constructor(private val context: Context, private
                     measurement.updateState(after.roadMode, measurementOccupancyState(after.meterState))
                     val tripId = activeTripId() ?: return@enqueue
                     val db = database()
-                    try { DutyRecordRepository(db).upsertDropoff(tripId, latestValidPlace(DrivingSampleRepository(db))) } finally { db.close() }
+                    try {
+                        DutyRecordRepository(db).upsertDropoff(tripId, latestValidPlace(DrivingSampleRepository(db)))
+                        db.dutyDao().findTripPlace(tripId, "DROPOFF", 0)?.let(::enqueueReverseGeocode)
+                    } finally { db.close() }
                 }
             }
             MeterAction.TOTAL -> {
@@ -159,6 +165,9 @@ class MeterController internal constructor(private val context: Context, private
             try {
                 val place = latestValidPlace(DrivingSampleRepository(db)) ?: return@enqueue
                 DutyRecordRepository(db).addWaypoint(tripId, place)
+                db.dutyDao().maxWaypointSequence(tripId)?.let { sequence ->
+                    db.dutyDao().findTripPlace(tripId, "WAYPOINT", sequence)?.let(::enqueueReverseGeocode)
+                }
                 MeterRuntimeStore.update { it.copy(waypointCount = it.waypointCount + 1) }
             } finally { db.close() }
         }
@@ -191,6 +200,7 @@ class MeterController internal constructor(private val context: Context, private
                 val started = records.startTrip(session, now, fareRule)
                 trip = started
                 records.savePickupPlace(started.id, latestValidPlace(DrivingSampleRepository(db)))
+                db.dutyDao().findTripPlace(started.id, "PICKUP", 0)?.let(::enqueueReverseGeocode)
                 val charges = tripStartChargeTypes(before, pendingReservation, settings.pickupFeeYen, settings.reservationFeeYen)
                 charges.forEach { type -> records.addChargeIfAbsent(started.id, type, if (type == "PICKUP_FEE") settings.pickupFeeYen else settings.reservationFeeYen, now) }
                 records.appendEvent(session, DutyEvent(UUID.randomUUID().toString(), DutyEventType.PICKUP, now, null, null))
@@ -240,6 +250,21 @@ class MeterController internal constructor(private val context: Context, private
     }
 
     private fun enqueue(operation: suspend () -> Unit) { scope.launch { operationMutex.withLock { operation() } } }
+    private fun enqueueReverseGeocode(place: TripPlaceEntity) {
+        scope.launch {
+            val result = reverseGeocoder.reverseGeocode(place.latitude, place.longitude) ?: return@launch
+            val db = database()
+            try {
+                db.dutyDao().updateTripPlaceAddresses(
+                    place.id,
+                    result.canonicalAddress,
+                    result.reportAddress,
+                    result.landmarkName,
+                    result.landmarkDetail,
+                )
+            } finally { db.close() }
+        }
+    }
     private fun database() = DutyDatabase.build(context, databaseName)
     private fun event(type: DutyEventType, modeChange: SafetyRoadModeChange? = null) { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).appendEvent(session, DutyEvent(UUID.randomUUID().toString(), type, Instant.now(), null, null, modeChange)) } finally { db.close() } } }
     private fun endDuty() { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }

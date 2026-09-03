@@ -1,0 +1,29 @@
+package jp.usuiensan.taxijokemeter.domain.location
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class ReverseGeocoderTest {
+    @Test
+    fun mapsAddressFieldsAndKeepsOnlyAnUnambiguousFeatureName() {
+        val result = mapReverseGeocode(
+            ReverseGeocodeAddress(
+                canonicalAddress = "東京都豊島区西池袋1丁目1番1号",
+                reportAddress = "豊島区西池袋1丁目1番1号",
+                featureName = "池袋駅",
+                featureDetail = "西口",
+            ),
+        )
+
+        assertEquals("東京都豊島区西池袋1丁目1番1号", result?.canonicalAddress)
+        assertEquals("豊島区西池袋1丁目1番1号", result?.reportAddress)
+        assertEquals("池袋駅", result?.landmarkName)
+        assertEquals("西口", result?.landmarkDetail)
+    }
+
+    @Test
+    fun geocoderFailureProducesNoAddressUpdate() {
+        assertNull(mapReverseGeocode(null))
+    }
+}

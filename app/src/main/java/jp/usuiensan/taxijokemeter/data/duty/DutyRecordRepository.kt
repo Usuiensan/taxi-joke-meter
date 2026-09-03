@@ -72,6 +72,52 @@ class DutyRecordRepository(private val database: DutyDatabase) {
             database.dutyDao().finalizeTrip(trip.id, trip.dropoffAt, status.name, revenueIncluded)
         }
     }
+
+    suspend fun addChargeIfAbsent(tripId: String, type: String, amountYen: Long, appliedAt: Instant, label: String? = null) = database.withTransaction {
+        val dao = database.dutyDao()
+        if (dao.findTripCharges(tripId).none { it.type == type }) {
+            dao.insertTripCharge(TripChargeEntity(UUID.randomUUID().toString(), tripId, type, amountYen, appliedAt, label))
+        }
+    }
+
+    suspend fun addWaypoint(tripId: String, place: RecordedPlace?) = database.withTransaction {
+        if (place != null) {
+            val dao = database.dutyDao()
+            val sequence = (dao.maxWaypointSequence(tripId) ?: 0) + 1
+            dao.insertTripPlace(place.toEntity(tripId, "WAYPOINT", sequence))
+        }
+    }
+
+    suspend fun upsertDropoff(tripId: String, place: RecordedPlace?) = database.withTransaction {
+        if (place != null) {
+            val dao = database.dutyDao()
+            val existing = dao.findTripPlace(tripId, "DROPOFF", 0)
+            val value = place.toEntity(tripId, "DROPOFF", 0, existing?.id ?: UUID.randomUUID().toString())
+            dao.insertTripPlace(value)
+        }
+    }
+
+    suspend fun savePickupPlace(tripId: String, place: RecordedPlace?) = database.withTransaction {
+        if (place != null) database.dutyDao().insertTripPlace(place.toEntity(tripId, "PICKUP", 0))
+    }
+
+    suspend fun updatePassengerCount(tripId: String, passengerCount: Int) {
+        database.dutyDao().updatePassengerCount(tripId, passengerCount)
+    }
+
+    suspend fun startRestInterval(sessionId: String, startedAt: Instant, place: RecordedPlace? = null): String {
+        val id = UUID.randomUUID().toString()
+        database.dutyDao().insertRestInterval(RestIntervalEntity(id, sessionId, startedAt, null, place?.latitude, place?.longitude, place?.accuracyMeters, 0, null))
+        return id
+    }
+
+    suspend fun updateRestDistance(id: String, distanceMeters: Long) {
+        database.dutyDao().updateRestDistance(id, distanceMeters)
+    }
+
+    suspend fun finishRestInterval(id: String, endedAt: Instant, reason: String) {
+        database.dutyDao().finishRestInterval(id, endedAt, reason)
+    }
 }
 
 private fun Trip.toEntity(sessionId: String) = TripEntity(id, sessionId, pickupAt, dropoffAt, pickupPlace.latitude(), pickupPlace.longitude(), pickupPlace.accuracy(), pickupPlace.recordedAt(), pickupPlace.address(), pickupPlace.precision(), pickupPlace.sourceName(), dropoffPlace.latitude(), dropoffPlace.longitude(), dropoffPlace.accuracy(), dropoffPlace.recordedAt(), dropoffPlace.address(), dropoffPlace.precision(), dropoffPlace.sourceName(), passengerCount, operatingDistanceMeters, fareYen, additionalChargeYen, paymentMethod.name, note, status.name, lowSpeedSeconds, revenueIncluded, serviceDate, tripNumber, actualDistanceMeters, chargeableDistanceMeters, meteredFareYen, totalFareYen, fareInitialDistanceMeters, fareInitialFareYen, fareDistanceIncrementMeters, fareDistanceIncrementFareYen, fareLowSpeedLimitKmh, fareLowSpeedTimeIncrementSeconds)
@@ -89,6 +135,8 @@ private fun RecordedPlace?.recordedAt() = this?.recordedAt
 private fun RecordedPlace?.address() = this?.addressText
 private fun RecordedPlace?.precision() = this?.locationPrecision?.name
 private fun RecordedPlace?.sourceName() = this?.source?.name
+
+private fun RecordedPlace.toEntity(tripId: String, type: String, sequence: Int, id: String = UUID.randomUUID().toString()) = TripPlaceEntity(id, tripId, type, sequence, recordedAt, latitude, longitude, accuracyMeters, addressText, addressText, null, null, locationPrecision.name, source.name)
 
 private fun TripEntity.pickupPlace() = placeOrNull(pickupLatitude, pickupLongitude, pickupAccuracyMeters, pickupRecordedAt, pickupAddressText, pickupLocationPrecision, pickupSource)
 private fun TripEntity.dropoffPlace() = placeOrNull(dropoffLatitude, dropoffLongitude, dropoffAccuracyMeters, dropoffRecordedAt, dropoffAddressText, dropoffLocationPrecision, dropoffSource)

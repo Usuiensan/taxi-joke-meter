@@ -18,6 +18,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class MeterRuntimeSnapshot(
     val dutyLifecycle: DutyLifecycle = DutyLifecycle.BEFORE_DEPARTURE,
@@ -45,6 +49,15 @@ data class MeterRuntimeSnapshot(
     val restIntervalId: String? = null,
     val restDistanceMeters: Long = 0,
     val safetyWarning: SafetyWarning? = null,
+    val currentLocation: CurrentLocationDisplayState = CurrentLocationDisplayState(),
+)
+
+enum class CurrentLocationStatus { LOADING, AVAILABLE, UNAVAILABLE }
+
+data class CurrentLocationDisplayState(
+    val roadName: String? = null,
+    val areaText: String? = null,
+    val status: CurrentLocationStatus = CurrentLocationStatus.LOADING,
 )
 
 internal fun MeterRuntimeSnapshot.toMeterRuntimeState() = MeterRuntimeState(dutyLifecycle, meterState, dutyActivity, roadMode, menu)
@@ -80,4 +93,17 @@ object MeterRuntimeStore {
             update { if (it.safetyWarning?.id == warning.id) it.copy(safetyWarning = null) else it }
         }
     }
+}
+
+internal fun shouldRefreshCurrentLocation(
+    lastGeocodedAtMillis: Long?, lastLatitude: Double?, lastLongitude: Double?,
+    nowMillis: Long, latitude: Double, longitude: Double,
+): Boolean {
+    if (lastGeocodedAtMillis == null || nowMillis - lastGeocodedAtMillis >= 30_000L) return true
+    if (lastLatitude == null || lastLongitude == null) return false
+    val earthRadiusMeters = 6_371_000.0
+    val dLat = Math.toRadians(latitude - lastLatitude)
+    val dLon = Math.toRadians(longitude - lastLongitude)
+    val a = sin(dLat / 2) * sin(dLat / 2) + cos(Math.toRadians(lastLatitude)) * cos(Math.toRadians(latitude)) * sin(dLon / 2) * sin(dLon / 2)
+    return earthRadiusMeters * 2 * atan2(sqrt(a), sqrt(1 - a)) >= 150.0
 }

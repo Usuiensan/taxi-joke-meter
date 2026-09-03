@@ -9,6 +9,8 @@ data class ReverseGeocodeAddress(
     val reportAddress: String?,
     val featureName: String?,
     val featureDetail: String?,
+    val roadName: String? = null,
+    val areaText: String? = null,
 )
 
 data class ReverseGeocodeResult(
@@ -16,6 +18,8 @@ data class ReverseGeocodeResult(
     val reportAddress: String?,
     val landmarkName: String?,
     val landmarkDetail: String?,
+    val roadName: String? = null,
+    val areaText: String? = null,
 )
 
 fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
@@ -25,5 +29,7 @@ fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
         reportAddress = address.reportAddress?.trim()?.takeIf(String::isNotEmpty),
         landmarkName = null,
         landmarkDetail = null,
+        roadName = address.roadName?.trim()?.takeIf(String::isNotEmpty),
+        areaText = address.areaText?.trim()?.takeIf(String::isNotEmpty),
     )
 }

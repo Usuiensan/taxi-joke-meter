@@ -41,10 +41,14 @@ import jp.usuiensan.taxijokemeter.data.meter.toMeterRuntimeState
 import jp.usuiensan.taxijokemeter.data.meter.safetyWarningText
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
+import jp.usuiensan.taxijokemeter.data.meter.CurrentLocationDisplayState
+import jp.usuiensan.taxijokemeter.data.meter.CurrentLocationStatus
+import jp.usuiensan.taxijokemeter.data.meter.shouldRefreshCurrentLocation
 import jp.usuiensan.taxijokemeter.domain.fare.FareCalculator
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterStateMachine
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -72,11 +76,36 @@ class LocationMeasurementService : Service() {
     private val healthTracker = LocationHealthTracker()
     private val healthHandler = Handler(Looper.getMainLooper())
     private var lastLoggedHealth: LocationHealth? = null
+    private var lastGeocodedAtMillis: Long? = null
+    private var lastGeocodedLatitude: Double? = null
+    private var lastGeocodedLongitude: Double? = null
+    private var geocodeInFlight = false
+    private lateinit var currentLocationGeocoder: AndroidReverseGeocoder
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
+            if (sample.isValid && !geocodeInFlight && shouldRefreshCurrentLocation(lastGeocodedAtMillis, lastGeocodedLatitude, lastGeocodedLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude)) {
+                geocodeInFlight = true
+                MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.LOADING)) }
+                val latitude = sample.latitude
+                val longitude = sample.longitude
+                scope.launch {
+                    val result = try { currentLocationGeocoder.reverseGeocode(latitude, longitude) } catch (exception: CancellationException) { throw exception } catch (_: Exception) { null }
+                    lastGeocodedAtMillis = SystemClock.elapsedRealtime()
+                    lastGeocodedLatitude = latitude
+                    lastGeocodedLongitude = longitude
+                    geocodeInFlight = false
+                    MeterRuntimeStore.update { state ->
+                        state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null)) {
+                            CurrentLocationDisplayState(status = CurrentLocationStatus.UNAVAILABLE)
+                        } else {
+                            CurrentLocationDisplayState(result.roadName, result.areaText, CurrentLocationStatus.AVAILABLE)
+                        })
+                    }
+                }
+            }
             val accumulation = if (sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
             runtimeState = runtimeState.advance(sample)
             val restId = MeterRuntimeStore.snapshot.value.restIntervalId.takeIf { sample.occupancyState == OccupancyState.REST }
@@ -143,6 +172,7 @@ class LocationMeasurementService : Service() {
         safetyEventRepository = SafetyEventRepository(database)
         audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(this, cue) }, MediaPlayerAudioCueSink(this))
         mapper = LocationSampleMapper(MeasurementQualityPolicy(20.0, Duration.ofSeconds(5)))
+        currentLocationGeocoder = AndroidReverseGeocoder(this)
         createNotificationChannel()
     }
 
@@ -293,6 +323,9 @@ class LocationMeasurementService : Service() {
                 lastLoggedHealth = health
             }
             MeasurementDebugStore.update { it.copy(health = health) }
+            if (health == LocationHealth.UNAVAILABLE && MeterRuntimeStore.snapshot.value.currentLocation.roadName == null && MeterRuntimeStore.snapshot.value.currentLocation.areaText == null) {
+                MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.UNAVAILABLE)) }
+            }
             healthHandler.postDelayed(this, 1_000L)
         }
     }

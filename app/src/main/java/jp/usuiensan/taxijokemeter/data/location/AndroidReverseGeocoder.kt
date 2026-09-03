@@ -24,6 +24,11 @@ class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
                         .joinToString(""),
                     featureName = address.featureName,
                     featureDetail = null,
+                    roadName = address.thoroughfare ?: address.featureName,
+                    areaText = listOf(address.locality, address.subLocality, address.subThoroughfare)
+                        .filterNot { it.isNullOrBlank() }
+                        .joinToString("")
+                        .takeIf(String::isNotEmpty),
                 ),
             )
         } catch (exception: CancellationException) {

@@ -106,6 +106,11 @@ class MeterPresentationTest {
         assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY, true))
     }
 
+    @Test fun reservationButtonReflectsPendingState() {
+        assertEquals("予約", reservationLabel(false))
+        assertEquals("予約 ✓", reservationLabel(true))
+    }
+
     @Test fun rightKeysUseStateSpecificEnablementAndKeepRoadModesUsable() {
         assertEquals(listOf(false, true, false, false, true, true, true), rightKeyEnabled(MeterState.EMPTY))
         assertEquals(listOf(true, false, true, false, true, true, true), rightKeyEnabled(MeterState.OCCUPIED))

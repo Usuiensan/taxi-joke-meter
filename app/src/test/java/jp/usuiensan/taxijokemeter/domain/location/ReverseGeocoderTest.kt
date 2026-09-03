@@ -23,6 +23,8 @@ class ReverseGeocoderTest {
                 reportAddress = "豊島区西池袋1丁目1番1号",
                 featureName = "池袋駅",
                 featureDetail = "西口",
+                roadName = "西池袋通り",
+                areaText = "豊島区西池袋1丁目",
             ),
         )
 
@@ -30,6 +32,8 @@ class ReverseGeocoderTest {
         assertEquals("豊島区西池袋1丁目1番1号", result?.reportAddress)
         assertNull(result?.landmarkName)
         assertNull(result?.landmarkDetail)
+        assertEquals("西池袋通り", result?.roadName)
+        assertEquals("豊島区西池袋1丁目", result?.areaText)
     }
 
     @Test

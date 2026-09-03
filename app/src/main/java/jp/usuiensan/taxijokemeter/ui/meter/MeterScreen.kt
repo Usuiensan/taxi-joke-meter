@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.Alignment
@@ -47,6 +51,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import jp.usuiensan.taxijokemeter.data.meter.MeterController
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeSnapshot
+import jp.usuiensan.taxijokemeter.data.meter.CurrentLocationStatus
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
 import jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle
 import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
@@ -105,6 +110,7 @@ private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 
 @Composable
 private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
+    var passengerControlsVisible by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -118,8 +124,8 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
             if (showsDateTime(runtime.meterState, false)) {
                 MeterDateHeader()
             }
-            BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller)
-            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug)
+            BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller, passengerControlsVisible)
+            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug) { passengerControlsVisible = !passengerControlsVisible }
         }
 
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -151,7 +157,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 }
 
 @Composable
-private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController) {
+private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController, passengerControlsVisible: Boolean) {
     Box(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.TopStart,
@@ -221,7 +227,8 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                                 overflow = TextOverflow.Clip,
                             )
                         }
-                        PassengerControls(runtime, controller, Modifier.align(Alignment.TopStart).padding(8.dp))
+                        if (passengerControlsVisible) PassengerControls(runtime, controller, Modifier.align(Alignment.TopStart).padding(8.dp))
+                        else CurrentLocationDisplay(runtime.currentLocation, Modifier.align(Alignment.TopStart).padding(8.dp))
                         Column(
                             Modifier.align(Alignment.TopEnd).padding(8.dp),
                             horizontalAlignment = Alignment.End,
@@ -462,7 +469,19 @@ private fun PassengerControls(runtime: MeterRuntimeSnapshot, controller: MeterCo
 }
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
+private fun CurrentLocationDisplay(location: jp.usuiensan.taxijokemeter.data.meter.CurrentLocationDisplayState, modifier: Modifier) {
+    Column(modifier) {
+        location.roadName?.let { Text(it, color = MeterWhite, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        location.areaText?.let { Text(it, color = MeterWhite, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        if (location.roadName == null && location.areaText == null) Text(
+            if (location.status == CurrentLocationStatus.LOADING) "現在地取得中…" else "現在地を取得できません",
+            color = MeterWhite, fontSize = 18.sp,
+        )
+    }
+}
+
+@Composable
+private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onTogglePassengerControls: () -> Unit) {
     val rows = if (runtime.meterState == MeterState.EMPTY) emptyMenuRows() else listOf(softKeySlots(runtime.meterState, runtime.menu == MeterMenu.EMPTY_MENU))
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEach { row ->
@@ -474,7 +493,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                         Spacer(slotModifier)
                     } else {
                         MeterButton(
-                            label,
+                            if (runtime.meterState == MeterState.EMPTY && label == "予約") reservationLabel(runtime.pendingReservation) else label,
                             if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite,
                             slotModifier,
                             if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023),
@@ -486,6 +505,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                                 runtime.meterState == MeterState.EMPTY && label == "回送" -> ({ controller.dispatch(MeterAction.DEADHEAD) })
                                 runtime.meterState == MeterState.EMPTY && label == "デバッグ" -> ({ controller.dispatch(MeterAction.BACK); onOpenDebug() })
                                 runtime.meterState == MeterState.EMPTY && label == "運賃制" -> onOpenFareSettings
+                                runtime.meterState == MeterState.OCCUPIED && label == "人員" -> onTogglePassengerControls
                                 runtime.meterState == MeterState.OCCUPIED && label == "経由地" -> ({ controller.addWaypoint() })
                                 runtime.meterState == MeterState.OCCUPIED && label == "迎車" -> ({ controller.togglePickupFee() })
                                 runtime.meterState == MeterState.REST && label == "解除" -> ({ controller.dispatch(MeterAction.REST_RELEASE) })
@@ -504,6 +524,8 @@ internal fun emptyMenuRows(): List<List<String?>> = listOf(
     listOf("休憩", "迎車", "予約", "回送", null),
     listOf("レポート", "再発行", "運賃制", "デバッグ", null),
 )
+
+internal fun reservationLabel(pending: Boolean) = if (pending) "予約 ✓" else "予約"
 
 internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<String?> = when {
     state == MeterState.EMPTY -> emptyMenuRows().flatten()

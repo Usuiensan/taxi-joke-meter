@@ -55,7 +55,7 @@ class MeterController internal constructor(private val context: Context, private
         if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
         fareRule = FareRuleStore(context).load()
         sessionId = measurement.ensureMeasurementRunning(fareRule)
-        MeterRuntimeStore.update { it.copy(dutySessionId = sessionId) }
+        MeterRuntimeStore.update { it.copy(dutySessionId = sessionId, pendingReservation = reservationPreferences().getBoolean(KEY_PENDING_RESERVATION, it.pendingReservation)) }
     }
 
     fun dispatch(action: MeterAction) {
@@ -147,7 +147,13 @@ class MeterController internal constructor(private val context: Context, private
     }
 
     fun toggleReservation() {
-        if (MeterRuntimeStore.snapshot.value.meterState in setOf(MeterState.EMPTY, MeterState.PICKUP)) MeterRuntimeStore.update { it.copy(pendingReservation = !it.pendingReservation) }
+        if (MeterRuntimeStore.snapshot.value.meterState in setOf(MeterState.EMPTY, MeterState.PICKUP)) {
+            MeterRuntimeStore.update { state ->
+                val pending = !state.pendingReservation
+                reservationPreferences().edit().putBoolean(KEY_PENDING_RESERVATION, pending).apply()
+                state.copy(pendingReservation = pending)
+            }
+        }
     }
 
     fun changePassengerCount(passengerCount: Int) {
@@ -209,6 +215,7 @@ class MeterController internal constructor(private val context: Context, private
                 charges.forEach { type -> records.addChargeIfAbsent(started.id, type, if (type == "PICKUP_FEE") settings.pickupFeeYen else settings.reservationFeeYen, now) }
                 records.appendEvent(session, DutyEvent(UUID.randomUUID().toString(), DutyEventType.PICKUP, now, null, null))
                 MeterRuntimeStore.update { it.copy(currentTripId = started.id, currentTripNumber = started.tripNumber, pendingReservation = if (pendingReservation) false else it.pendingReservation, pickupFeeApplied = "PICKUP_FEE" in charges, restIntervalId = null, restDistanceMeters = 0) }
+                if (pendingReservation) reservationPreferences().edit().putBoolean(KEY_PENDING_RESERVATION, false).apply()
                 measurement.updateState(after.roadMode, OccupancyState.OCCUPIED)
                 measurement.beginFareMeasurement(fareRule)
             } finally { db.close() }
@@ -279,8 +286,13 @@ class MeterController internal constructor(private val context: Context, private
         }
     }
     private fun database() = DutyDatabase.build(context, databaseName)
+    private fun reservationPreferences() = context.getSharedPreferences("meter_runtime", Context.MODE_PRIVATE)
     private fun event(type: DutyEventType, modeChange: SafetyRoadModeChange? = null) { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).appendEvent(session, DutyEvent(UUID.randomUUID().toString(), type, Instant.now(), null, null, modeChange)) } finally { db.close() } } }
     private fun endDuty() { val session = currentSessionId() ?: return; enqueue { val db = database(); try { DutyRecordRepository(db).markEnded(session, Instant.now()) } finally { db.close() } } }
+
+    private companion object {
+        const val KEY_PENDING_RESERVATION = "pending_reservation"
+    }
 }
 
 internal fun CoroutineScope.launchReverseGeocode(dispatcher: CoroutineDispatcher, operation: suspend CoroutineScope.() -> Unit): Job =

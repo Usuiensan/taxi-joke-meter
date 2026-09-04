@@ -43,6 +43,34 @@ class TripMeasurementAccumulatorTest {
     }
 
     @Test
+    fun classifiesNinePointNineTenAndTenPointOneKmhAtTheBoundary() {
+        mapOf(9.9 to FareMeasurementMode.TIME, 10.0 to FareMeasurementMode.TIME, 10.1 to FareMeasurementMode.DISTANCE).forEach { (kmh, expectedMode) ->
+            val result = TripMeasurementAccumulator(rule).add(
+                sample(0, speedMps = kmh / 3.6),
+                sample(1, longitude = 135.00001, speedMps = kmh / 3.6),
+            )
+
+            assertEquals(expectedMode, result.mode)
+            assertEquals(if (expectedMode == FareMeasurementMode.TIME) 1L else 0L, result.lowSpeedSeconds)
+        }
+    }
+
+    @Test
+    fun lowSpeedDistanceIsNotChargedButTimeResumesAfterCrossingTheBoundary() {
+        val accumulator = TripMeasurementAccumulator(rule)
+        val low = sample(0, speedMps = 9.9 / 3.6)
+        val fast = sample(1, longitude = 135.00001, speedMps = 10.1 / 3.6)
+        val lowAgain = sample(2, longitude = 135.00002, speedMps = 9.9 / 3.6)
+
+        accumulator.add(low, fast)
+        val result = accumulator.add(fast, lowAgain)
+
+        assertEquals(1L, result.lowSpeedSeconds)
+        assertEquals(1L, result.chargeableDistanceMeters)
+        assertEquals(2L, result.actualDistanceMeters)
+    }
+
+    @Test
     fun excludesIntervalsWithInvalidSamples() {
         val accumulator = TripMeasurementAccumulator(rule)
 

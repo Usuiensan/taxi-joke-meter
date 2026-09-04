@@ -72,7 +72,7 @@ fun japaneseAddress(locality: String?, subLocality: String?, subThoroughfare: St
         .distinct()
     val fields = parts.joinToString("")
     val line = addressLine?.let(::cleanJapaneseAddressLine)
-    val lineContainsFields = line != null && parts.count { it in line } >= 2
+    val lineContainsFields = line != null && parts.count { it in line || it in addressLine.orEmpty() } >= 2
     return (line?.takeIf { (looksLikeAddress(it) || lineContainsFields) && it.length >= fields.length } ?: fields.takeIf { it.isNotEmpty() } ?: line)
         ?.takeIf(String::isNotEmpty)
 }

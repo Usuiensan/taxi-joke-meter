@@ -44,7 +44,7 @@ class MeterPresentationTest {
 
     @Test
     fun paymentShowsPaymentSoftKeys() {
-        assertEquals(emptyList<String>(), softKeyLabels(MeterState.PAYMENT))
+        assertEquals(listOf("迎車"), softKeyLabels(MeterState.PAYMENT))
     }
 
     @Test fun totalShowsPaymentSoftKeysAndSummaryTitle() {
@@ -98,13 +98,24 @@ class MeterPresentationTest {
     @Test fun everyMeterStateUsesFiveSoftKeySlots() {
         assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY))
         assertEquals(listOf("人員", "経由地", "迎車", "割増", "割引"), softKeySlots(MeterState.OCCUPIED))
-        assertEquals(listOf(null, null, null, null, null), softKeySlots(MeterState.PAYMENT))
+        assertEquals(listOf("迎車", null, null, null, null), softKeySlots(MeterState.PAYMENT))
         assertEquals(listOf(null, null, null, null, null), softKeySlots(MeterState.TOTAL))
         assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
     }
 
     @Test fun emptyMenuUsesFixedMenuSoftKeySlots() {
         assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY, true))
+    }
+
+    @Test fun paymentSummaryUsesLargeSharedRows() {
+        assertEquals(60, paymentSummaryRowHeightDp())
+        assertEquals(30, paymentSummaryLabelFontSizeSp())
+        assertEquals(34, paymentSummaryValueFontSizeSp())
+    }
+
+    @Test fun pickupFeeLabelReflectsRuntimeApplication() {
+        assertEquals("迎車", pickupFeeLabel(false))
+        assertEquals("迎車 ✓", pickupFeeLabel(true))
     }
 
     @Test fun emptyPickupSoftKeyDispatchesPickupAction() {

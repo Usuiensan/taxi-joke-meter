@@ -296,12 +296,12 @@ private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
 @Composable
 private fun PaymentDetailRow(label: String, value: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(Color(0xFF4D5C64)).padding(horizontal = 8.dp, vertical = 0.dp),
+        modifier = Modifier.fillMaxWidth().height(paymentSummaryRowHeightDp().dp).background(Color(0xFF4D5C64)).padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = MeterWhite, fontSize = 24.sp)
-        Text(value, color = MeterWhite, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+        Text(label, color = MeterWhite, fontSize = paymentSummaryLabelFontSizeSp().sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+        Text(value, color = MeterWhite, fontSize = paymentSummaryValueFontSizeSp().sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, textAlign = TextAlign.End)
     }
 }
 
@@ -536,6 +536,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                         MeterButton(
                             when {
                                 runtime.meterState == MeterState.EMPTY && label == "予約" -> reservationLabel(runtime.pendingReservation)
+                                runtime.meterState in setOf(MeterState.OCCUPIED, MeterState.PAYMENT) && label == "迎車" -> pickupFeeLabel(runtime.pickupFeeApplied)
                                 adjustmentOn -> "$label ✓"
                                 else -> label
                             },
@@ -573,12 +574,14 @@ internal fun emptyMenuRows(): List<List<String?>> = listOf(
 )
 
 internal fun reservationLabel(pending: Boolean) = if (pending) "予約 ✓" else "予約"
+internal fun pickupFeeLabel(applied: Boolean) = if (applied) "迎車 ✓" else "迎車"
 
 internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<String?> = when {
     state == MeterState.EMPTY -> emptyMenuRows().flatten()
     else -> when (state) {
     MeterState.OCCUPIED -> listOf("人員", "経由地", "迎車", "割増", "割引")
-    MeterState.PAYMENT, MeterState.TOTAL -> listOf(null, null, null, null, null)
+    MeterState.PAYMENT -> listOf("迎車", null, null, null, null)
+    MeterState.TOTAL -> listOf(null, null, null, null, null)
     MeterState.DEADHEAD -> listOf(null, null, null, null, "解除")
     MeterState.REST -> listOf(null, null, null, null, "解除")
     MeterState.PICKUP -> listOf(null, null, null, null, null)
@@ -614,6 +617,10 @@ internal fun paymentSummaryRows(fareYen: Long) = listOf(
     "運賃料金計" to "${fareYen.formatYen()}円",
     "通行料他" to "0円",
 )
+
+internal fun paymentSummaryRowHeightDp() = 60
+internal fun paymentSummaryLabelFontSizeSp() = 30
+internal fun paymentSummaryValueFontSizeSp() = 34
 
 internal fun showsChargeProgressRail(state: MeterState) = state == MeterState.OCCUPIED
 

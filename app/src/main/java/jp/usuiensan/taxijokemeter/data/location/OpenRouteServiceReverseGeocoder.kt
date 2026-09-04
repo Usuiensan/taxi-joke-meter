@@ -4,6 +4,7 @@ import android.util.Log
 import jp.usuiensan.taxijokemeter.BuildConfig
 import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocodeResult
 import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocoder
+import jp.usuiensan.taxijokemeter.domain.location.japaneseAddress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,21 +42,21 @@ class OpenRouteServiceReverseGeocoder(
         val label = p.optString("label").takeIf(String::isNotBlank)
         val road = p.optString("street").takeIf(String::isNotBlank)
             ?: p.optString("road").takeIf(String::isNotBlank)
-            ?: p.optString("name").takeIf(String::isNotBlank)
         val house = p.optString("housenumber").takeIf(String::isNotBlank)
         val postal = p.optString("postalcode").takeIf(String::isNotBlank)
         val municipality = p.optString("municipality").takeIf(String::isNotBlank)
         val locality = p.optString("locality").takeIf(String::isNotBlank)
         val district = p.optString("district").takeIf(String::isNotBlank)
-        val address = listOfNotNull(municipality, locality, district, road, house).distinct().joinToString("").takeIf(String::isNotBlank) ?: label
+        val facility = p.optString("name").takeIf { it.isNotBlank() && it != road }
+        val address = japaneseAddress(municipality, listOfNotNull(locality, district).distinct().joinToString(""), house, null)
         return ReverseGeocodeResult(
             canonicalAddress = label ?: address,
             reportAddress = address,
-            landmarkName = p.optString("name").takeIf { it.isNotBlank() && it != road },
+            landmarkName = facility,
             landmarkDetail = null,
             roadName = road,
-            areaText = listOfNotNull(municipality, locality, district).distinct().joinToString(" ").takeIf(String::isNotBlank),
-            facilityName = p.optString("name").takeIf { it.isNotBlank() && it != road && it != house },
+            areaText = address,
+            facilityName = facility,
             municipality = municipality,
             town = locality,
             houseNumber = house,

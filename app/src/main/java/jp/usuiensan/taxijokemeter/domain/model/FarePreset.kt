@@ -13,7 +13,7 @@ data class FarePreset(
 object FarePresets {
     val TEN_YEN_PER_KM = FarePreset(
         "10_yen_per_km", "10円/km",
-        FareRule(1_000, 10, 200, 2, 10, 75),
+        FareRule(1_000, 10, 1_000, 10, 10, 75),
         200, 200, 20, 10,
     )
     val TAXI_URBAN = FarePreset(

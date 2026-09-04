@@ -11,7 +11,7 @@ class FareAdjustmentTest {
     @Test fun builtInPresetsContainAllTenPriceMasterValues() {
         assertEquals(
             listOf(
-                FarePreset("10_yen_per_km", "10円/km", FareRule(1_000, 10, 200, 2, 10, 75), 10, 10, 20, 10),
+                FarePreset("10_yen_per_km", "10円/km", FareRule(1_000, 10, 200, 2, 10, 75), 200, 200, 20, 10),
                 FarePreset("taxi_urban", "タクシー都市部", FareRule(1_000, 500, 232, 100, 10, 85), 500, 500, 20, 10),
                 FarePreset("taxi_suburban", "タクシー郊外部", FareRule(1_000, 500, 211, 100, 10, 80), 500, 500, 20, 10),
                 FarePreset("taxi_rural", "タクシー地方部", FareRule(900, 470, 271, 100, 10, 100), 300, 500, 20, 10),

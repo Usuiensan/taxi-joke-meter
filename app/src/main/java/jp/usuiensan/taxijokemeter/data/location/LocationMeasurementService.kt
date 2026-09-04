@@ -97,6 +97,10 @@ class LocationMeasurementService : Service() {
     private var hasValidGpsFix = false
     private var latestGpsLocation: Location? = null
     private lateinit var currentLocationGeocoder: ReverseGeocoder
+    private lateinit var placesFacilitySearcher: GooglePlacesFacilitySearcher
+    private var lastPlacesAtMillis: Long? = null
+    private var lastPlacesLatitude: Double? = null
+    private var lastPlacesLongitude: Double? = null
     private var chargeModeController: ChargeProgressModeController? = null
 
     private val listener = object : LocationListener {
@@ -141,6 +145,16 @@ class LocationMeasurementService : Service() {
                         }
                     } finally {
                         geocodeInFlight.set(false)
+                    }
+                }
+            }
+            if (isGpsFix && sample.isDisplayValid && sample.accuracyMeters <= PRECISE_MAX_METERS && shouldRefreshPlaces(lastPlacesAtMillis, lastPlacesLatitude, lastPlacesLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude)) {
+                lastPlacesAtMillis = SystemClock.elapsedRealtime()
+                lastPlacesLatitude = sample.latitude
+                lastPlacesLongitude = sample.longitude
+                placesFacilitySearcher.search(sample.latitude, sample.longitude, sample.accuracyMeters) { facilityName ->
+                    if (facilityName != null) MeterRuntimeStore.update { state ->
+                        state.copy(currentLocation = state.currentLocation.copy(facilityName = facilityName))
                     }
                 }
             }
@@ -215,7 +229,8 @@ class LocationMeasurementService : Service() {
         safetyEventRepository = SafetyEventRepository(database)
         audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(this, cue) }, MediaPlayerAudioCueSink(this), safetyPlaybackGuard = jp.usuiensan.taxijokemeter.data.meter.ProcessSafetyPlaybackGuard)
         mapper = LocationSampleMapper(MeasurementQualityPolicy(20.0, Duration.ofSeconds(5)))
-        currentLocationGeocoder = OpenRouteServiceReverseGeocoder()
+        currentLocationGeocoder = GoogleReverseGeocoder(this)
+        placesFacilitySearcher = GooglePlacesFacilitySearcher(this)
         createNotificationChannel()
         registerImuSensors()
     }

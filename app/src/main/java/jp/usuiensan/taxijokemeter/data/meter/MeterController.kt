@@ -9,7 +9,7 @@ import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
 import jp.usuiensan.taxijokemeter.data.location.hasLocationPermission
-import jp.usuiensan.taxijokemeter.data.location.OpenRouteServiceReverseGeocoder
+import jp.usuiensan.taxijokemeter.data.location.GoogleReverseGeocoder
 import jp.usuiensan.taxijokemeter.data.receipt.ReceiptArtifactStore
 import jp.usuiensan.taxijokemeter.data.receipt.ReceiptRepository
 import jp.usuiensan.taxijokemeter.data.safety.SafetyEventRepository
@@ -60,7 +60,7 @@ class MeterController internal constructor(
     private val reverseGeocodeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operationMutex = Mutex()
     private val measurement = DutyMeasurementController(context)
-    private val reverseGeocoder = reverseGeocoder ?: OpenRouteServiceReverseGeocoder()
+    private val reverseGeocoder = reverseGeocoder ?: GoogleReverseGeocoder(context)
     private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context), safetyPlaybackGuard = ProcessSafetyPlaybackGuard)
     private val roadModeController = RoadModeController()
     private var sessionId: String? = null

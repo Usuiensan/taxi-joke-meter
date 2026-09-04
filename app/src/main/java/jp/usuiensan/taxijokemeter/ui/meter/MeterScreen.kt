@@ -126,6 +126,10 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
     ) {
         Column(modifier = Modifier.width(84.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             MeterStateLabel(stateLabel(runtime.meterState))
+            Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(currentSpeedLabel(runtime.latestSpeedMps), color = MeterWhite, fontSize = 14.sp, maxLines = 1, softWrap = false)
+                Text(gpsAccuracyLabel(runtime.latestAccuracyMeters), color = MeterWhite, fontSize = 14.sp, maxLines = 1, softWrap = false)
+            }
             Spacer(Modifier.weight(1f))
         }
 
@@ -376,6 +380,12 @@ internal fun emptySoftKeyAction(label: String) = when (label) {
     "回送" -> MeterAction.DEADHEAD
     else -> null
 }
+
+internal fun currentSpeedLabel(speedMps: Double?): String =
+    speedMps?.takeIf(Double::isFinite)?.let { "%.0fkm/h".format(Locale.JAPAN, it * 3.6) } ?: "--km/h"
+
+internal fun gpsAccuracyLabel(accuracyMeters: Double?): String =
+    accuracyMeters?.takeIf { it.isFinite() && it >= 0.0 }?.let { "精度%.0fm".format(Locale.JAPAN, it) } ?: "精度--"
 
 @Composable
 private fun LocationRecoveryPanel(state: LocationAccessState, requestPermission: () -> Unit, openAppSettings: () -> Unit, openLocationSettings: () -> Unit, modifier: Modifier) {

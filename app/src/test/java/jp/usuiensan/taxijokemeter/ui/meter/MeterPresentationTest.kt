@@ -64,6 +64,13 @@ class MeterPresentationTest {
         assertEquals("迎車", stateLabel(MeterState.PICKUP))
     }
 
+    @Test fun telemetryLabelsShowSpeedAndAccuracyBelowStateLabel() {
+        assertEquals("10km/h", currentSpeedLabel(10.0 / 3.6))
+        assertEquals("精度10m", gpsAccuracyLabel(10.0))
+        assertEquals("--km/h", currentSpeedLabel(null))
+        assertEquals("精度--", gpsAccuracyLabel(null))
+    }
+
     @Test fun emptyButtonKeepsEmptyAndLeavesOtherTransitionsUnchanged() {
         assertEquals(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.EMPTY, emptyButtonAction(MeterState.EMPTY))
         assertEquals(jp.usuiensan.taxijokemeter.domain.meter.MeterAction.EMPTY, emptyButtonAction(MeterState.TOTAL))

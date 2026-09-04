@@ -67,6 +67,7 @@ import jp.usuiensan.taxijokemeter.domain.report.ReceiptData
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptTextRenderer
 import jp.usuiensan.taxijokemeter.domain.report.SafetyReportData
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -147,20 +148,34 @@ fun AppShell() {
 private fun shareLatest(context: Context, safety: Boolean) {
     val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main)
     scope.launch {
-        val session = MeterRuntimeStore.snapshot.value.dutySessionId ?: return@launch
-        val result = withContext(Dispatchers.IO) {
-            val db = DutyDatabase.build(context)
-            try {
-                val artifacts = ReceiptArtifactStore(context)
-                val receipt = ReceiptRepository(db).findForSession(session).lastOrNull() ?: return@withContext null
-                if (!safety) artifacts.share(artifacts.writePng(receipt), "image/png") else {
-                    val samples = DrivingSampleRepository(db).findByDutySessionId(session)
-                    val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                    artifacts.share(artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, ReceiptRepository(db).findForSession(session))), "image/png")
+        val snapshot = MeterRuntimeStore.snapshot.value
+        val session = snapshot.dutySessionId
+        val result = runCatching {
+            withContext(Dispatchers.IO) {
+                repeat(10) { attempt ->
+                    val intent = session?.let { sessionId ->
+                        val db = DutyDatabase.build(context)
+                        try {
+                            val artifacts = ReceiptArtifactStore(context)
+                            val receipts = ReceiptRepository(db)
+                            val receipt = snapshot.currentTripId?.let { tripId -> receipts.findById(tripId) } ?: receipts.findForSession(sessionId).lastOrNull()
+                            receipt?.let {
+                                if (!safety) artifacts.share(artifacts.writePng(it), "image/png") else {
+                                    val samples = DrivingSampleRepository(db).findByDutySessionId(sessionId)
+                                    val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
+                                    artifacts.share(artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, receipts.findForSession(sessionId))), "image/png")
+                                }
+                            }
+                        } finally { db.close() }
+                    }
+                    if (intent != null) return@withContext intent
+                    if (attempt < 9) delay(200L)
                 }
-            } finally { db.close() }
-        }
+                null
+            }
+        }.getOrNull()
         result?.let { context.startActivity(Intent.createChooser(it, if (safety) "安全運転レポートを共有" else "レシートを共有")) }
+            ?: Toast.makeText(context, "共有できるレシートがありません", Toast.LENGTH_SHORT).show()
     }
 }
 

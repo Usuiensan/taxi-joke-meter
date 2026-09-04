@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -204,11 +205,13 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 8.dp),
                         )
                         Row(
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 10.dp),
+                            modifier = Modifier.align(Alignment.BottomEnd).fillMaxWidth().padding(end = 8.dp, bottom = 10.dp),
                             verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.End,
                         ) {
-                            Text(
+                            AutoSizeMeterText(
                                 fare.number,
+                                modifier = Modifier.weight(1f),
                                 color = MeterWhite,
                                 style = TextStyle(
                                     fontFamily = MeterFontFamily,
@@ -218,9 +221,7 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                                     fontFeatureSettings = "tnum",
                                     platformStyle = PlatformTextStyle(includeFontPadding = true),
                                 ),
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Clip,
+                                textAlign = TextAlign.End,
                             )
                             Text(
                                 fare.unit,
@@ -273,16 +274,16 @@ private fun PaymentSummaryPanel(runtime: MeterRuntimeSnapshot) {
             val fare = formatFareAmount(runtime.fareYen)
             val sizing = fareDisplaySizing(runtime.meterState, maxHeight.value, fare.number)
             Row(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).fillMaxWidth().padding(end = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.End,
             ) {
-                Text(
+                AutoSizeMeterText(
                     fare.number,
+                    modifier = Modifier.weight(1f),
                     color = MeterWhite,
                     style = TextStyle(fontFamily = MeterFontFamily, fontSize = sizing.numberSp.sp, lineHeight = sizing.numberSp.sp * 1.08f, fontWeight = FontWeight.Light, fontFeatureSettings = "tnum", platformStyle = PlatformTextStyle(includeFontPadding = true)),
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
+                    textAlign = TextAlign.End,
                 )
                 Text(
                     fare.unit,
@@ -305,8 +306,42 @@ private fun PaymentDetailRow(label: String, value: String) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = MeterWhite, fontSize = paymentSummaryLabelFontSizeSp().sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-        Text(value, color = MeterWhite, fontSize = paymentSummaryValueFontSizeSp().sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, textAlign = TextAlign.End)
+        AutoSizeMeterText(
+            value,
+            modifier = Modifier.weight(1f),
+            color = MeterWhite,
+            style = TextStyle(fontSize = paymentSummaryValueFontSizeSp().sp, fontWeight = FontWeight.Bold),
+            minFontSize = 18.sp,
+            textAlign = TextAlign.End,
+        )
     }
+}
+
+@Composable
+private fun AutoSizeMeterText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    style: TextStyle = LocalTextStyle.current,
+    minFontSize: TextUnit = 48.sp,
+    textAlign: TextAlign? = null,
+) {
+    var fontSize by remember(text, style.fontSize) { mutableStateOf(style.fontSize) }
+    Text(
+        text,
+        modifier = modifier,
+        color = color,
+        style = style.copy(fontSize = fontSize),
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        textAlign = textAlign,
+        onTextLayout = { layoutResult ->
+            if (layoutResult.hasVisualOverflow && fontSize > minFontSize) {
+                fontSize = (fontSize.value - 1f).coerceAtLeast(minFontSize.value).sp
+            }
+        },
+    )
 }
 
 @Composable

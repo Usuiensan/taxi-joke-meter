@@ -75,7 +75,8 @@ class MeterControllerOperationsTest {
     @Test fun currentLocationGeocodeIsThrottledByTimeOrDistance() {
         assertTrue(shouldRefreshCurrentLocation(null, null, null, 0, 35.0, 139.0))
         assertFalse(shouldRefreshCurrentLocation(1_000, 35.0, 139.0, 2_000, 35.0001, 139.0001))
-        assertTrue(shouldRefreshCurrentLocation(1_000, 35.0, 139.0, 2_000, 35.002, 139.0))
-        assertTrue(shouldRefreshCurrentLocation(1_000, 35.0, 139.0, 31_001, 35.0, 139.0))
+        assertFalse(shouldRefreshCurrentLocation(1_000, 35.0, 139.0, 2_000, 35.002, 139.0))
+        assertTrue(shouldRefreshCurrentLocation(1_000, 35.0, 139.0, 2_000, 35.003, 139.0))
+        assertTrue(shouldRefreshCurrentLocation(1_000, 35.0, 139.0, 61_001, 35.0, 139.0))
     }
 }

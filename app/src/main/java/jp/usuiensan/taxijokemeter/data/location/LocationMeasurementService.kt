@@ -98,9 +98,7 @@ class LocationMeasurementService : Service() {
     private var latestGpsLocation: Location? = null
     private lateinit var currentLocationGeocoder: ReverseGeocoder
     private lateinit var placesFacilitySearcher: GooglePlacesFacilitySearcher
-    private var lastPlacesAtMillis: Long? = null
-    private var lastPlacesLatitude: Double? = null
-    private var lastPlacesLongitude: Double? = null
+    private val stationaryPlacesTracker = StationaryPlacesTracker()
     private var chargeModeController: ChargeProgressModeController? = null
 
     private val listener = object : LocationListener {
@@ -148,10 +146,7 @@ class LocationMeasurementService : Service() {
                     }
                 }
             }
-            if (isGpsFix && sample.isDisplayValid && sample.accuracyMeters <= PRECISE_MAX_METERS && shouldRefreshPlaces(lastPlacesAtMillis, lastPlacesLatitude, lastPlacesLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude)) {
-                lastPlacesAtMillis = SystemClock.elapsedRealtime()
-                lastPlacesLatitude = sample.latitude
-                lastPlacesLongitude = sample.longitude
+            if (isGpsFix && stationaryPlacesTracker.update(SystemClock.elapsedRealtime(), sample.speedMps, sample.isDisplayValid && sample.accuracyMeters <= PRECISE_MAX_METERS, sample.latitude, sample.longitude)) {
                 placesFacilitySearcher.search(sample.latitude, sample.longitude, sample.accuracyMeters) { facilityName ->
                     if (facilityName != null) MeterRuntimeStore.update { state ->
                         state.copy(currentLocation = state.currentLocation.copy(facilityName = facilityName))
@@ -257,6 +252,7 @@ class LocationMeasurementService : Service() {
             savedSampleCount.set(0)
             hasValidGpsFix = false
             latestGpsLocation = null
+            stationaryPlacesTracker.reset()
             MeterRuntimeStore.update { it.copy(currentLocation = CurrentLocationDisplayState(status = CurrentLocationStatus.GPS_LOADING)) }
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = runtimeState.sampleState.dutySessionId, roadMode = runtimeState.sampleState.roadMode.name))
             MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, roadMode = runtimeState.sampleState.roadMode) }

@@ -106,11 +106,11 @@ internal fun shouldRefreshCurrentLocation(
     lastGeocodedAtMillis: Long?, lastLatitude: Double?, lastLongitude: Double?,
     nowMillis: Long, latitude: Double, longitude: Double,
 ): Boolean {
-    if (lastGeocodedAtMillis == null || nowMillis - lastGeocodedAtMillis >= 30_000L) return true
+    if (lastGeocodedAtMillis == null || nowMillis - lastGeocodedAtMillis >= 60_000L) return true
     if (lastLatitude == null || lastLongitude == null) return false
     val earthRadiusMeters = 6_371_000.0
     val dLat = Math.toRadians(latitude - lastLatitude)
     val dLon = Math.toRadians(longitude - lastLongitude)
     val a = sin(dLat / 2) * sin(dLat / 2) + cos(Math.toRadians(lastLatitude)) * cos(Math.toRadians(latitude)) * sin(dLon / 2) * sin(dLon / 2)
-    return earthRadiusMeters * 2 * atan2(sqrt(a), sqrt(1 - a)) >= 150.0
+    return earthRadiusMeters * 2 * atan2(sqrt(a), sqrt(1 - a)) >= 300.0
 }

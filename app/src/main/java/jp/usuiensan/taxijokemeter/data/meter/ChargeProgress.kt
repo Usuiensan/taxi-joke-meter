@@ -11,7 +11,7 @@ data class ChargeProgressUiState(
 
 object ChargeProgressMapper {
     fun initial(rule: FareRule, latestSpeedMps: Double?): ChargeProgressUiState = ChargeProgressUiState(
-        mode = if (latestSpeedMps != null && latestSpeedMps * 3.6 < rule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE,
+        mode = if (latestSpeedMps != null && latestSpeedMps * 3.6 <= rule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE,
         fraction = 0f,
     )
 

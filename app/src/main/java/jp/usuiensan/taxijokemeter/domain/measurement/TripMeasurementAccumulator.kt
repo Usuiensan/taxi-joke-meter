@@ -22,8 +22,11 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
     private var distanceMeters = 0.0
     private var actualDistanceMeters = 0.0
     private var lowSpeedDuration = Duration.ZERO
+    private var lastAcceptedSample: DrivingSample? = null
 
     fun add(previous: DrivingSample, current: DrivingSample, distanceOnly: Boolean = false): MeasurementAccumulation {
+        if (!current.isFareContinuable) lastAcceptedSample = null
+        val distancePrevious = lastAcceptedSample ?: previous
         val mode = when {
             !previous.isFareContinuable || !current.isFareContinuable -> FareMeasurementMode.UNAVAILABLE
             current.isTimeFallback && !distanceOnly -> {
@@ -32,22 +35,25 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
             }
             previous.isTimeFallback -> FareMeasurementMode.DISTANCE
             previous.isValid && current.isValid -> {
-            val elapsed = elapsedBetween(previous, current)
-            val distance = segmentDistanceMeters(previous, current)
-            val speedMps = current.speedMps ?: monotonicElapsed(previous, current)
+            val elapsed = elapsedBetween(distancePrevious, current)
+            val distance = segmentDistanceMeters(distancePrevious, current)
+            val speedMps = current.speedMps ?: monotonicElapsed(distancePrevious, current)
                 ?.takeIf { it > Duration.ZERO }
                 ?.let { distance / it.toNanos() * 1_000_000_000.0 }
-            if (elapsed != null && !elapsed.isZero && speedMps != null) {
+            val accepted = elapsed != null && !elapsed.isZero && speedMps != null &&
+                isPlausibleDistance(distancePrevious, current, distance, elapsed)
+            if (accepted) {
                 actualDistanceMeters += distance
             }
-            if (distanceOnly && elapsed != null && !elapsed.isZero && speedMps != null) {
+            if (accepted) lastAcceptedSample = current
+            if (distanceOnly && accepted) {
                 distanceMeters += distance
-            } else if (elapsed != null && !elapsed.isZero && speedMps != null && speedMps * 3.6 < fareRule.lowSpeedLimitKmh) {
+            } else if (accepted && speedMps * 3.6 <= fareRule.lowSpeedLimitKmh) {
                 lowSpeedDuration = lowSpeedDuration.plus(elapsed)
-            } else if (elapsed != null && !elapsed.isZero && speedMps != null) {
+            } else if (accepted) {
                 distanceMeters += distance
             }
-                if (current.speedMps != null && current.speedMps * 3.6 < fareRule.lowSpeedLimitKmh) FareMeasurementMode.TIME else FareMeasurementMode.DISTANCE
+                if (current.speedMps != null && current.speedMps * 3.6 <= fareRule.lowSpeedLimitKmh) FareMeasurementMode.TIME else FareMeasurementMode.DISTANCE
             }
             else -> FareMeasurementMode.UNAVAILABLE
         }
@@ -63,6 +69,14 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
     private fun monotonicElapsed(previous: DrivingSample, current: DrivingSample): Duration? {
         if (previous.elapsedRealtimeNanos == null || current.elapsedRealtimeNanos == null) return null
         return (current.elapsedRealtimeNanos - previous.elapsedRealtimeNanos).takeIf { it > 0 }?.let(Duration::ofNanos)
+    }
+
+    // ponytail: speed-based plausibility gate; use sensor fusion if GPS noise needs a richer model.
+    private fun isPlausibleDistance(previous: DrivingSample, current: DrivingSample, distance: Double, elapsed: Duration): Boolean {
+        val speed = current.speedMps ?: return true
+        val previousSpeed = previous.speedMps ?: speed
+        val expected = maxOf(speed, previousSpeed) * elapsed.toNanos() / 1_000_000_000.0
+        return distance <= maxOf(100.0, expected * 4.0 + maxOf(previous.accuracyMeters, current.accuracyMeters) * 2.0)
     }
 
 }

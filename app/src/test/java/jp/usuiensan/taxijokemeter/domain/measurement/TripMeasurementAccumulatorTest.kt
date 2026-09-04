@@ -32,6 +32,17 @@ class TripMeasurementAccumulatorTest {
     }
 
     @Test
+    fun treatsExactlyTenKmhAsLowSpeed() {
+        val result = TripMeasurementAccumulator(rule).add(
+            sample(0, speedMps = 10.0 / 3.6),
+            sample(1, longitude = 135.0001, speedMps = 10.0 / 3.6),
+        )
+
+        assertEquals(1L, result.lowSpeedSeconds)
+        assertEquals(0L, result.chargeableDistanceMeters)
+    }
+
+    @Test
     fun excludesIntervalsWithInvalidSamples() {
         val accumulator = TripMeasurementAccumulator(rule)
 
@@ -91,6 +102,21 @@ class TripMeasurementAccumulatorTest {
 
         assertEquals(9L, result.chargeableDistanceMeters)
         assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test
+    fun rejectsAOnePointGpsJumpWhenReportedSpeedCannotExplainIt() {
+        val accumulator = TripMeasurementAccumulator(rule)
+        val first = sample(0, latitude = 35.0, longitude = 135.0, speedMps = 20.0 / 3.6)
+        val second = sample(1, latitude = 35.0, longitude = 135.00005, speedMps = 20.0 / 3.6)
+        val outlier = sample(2, latitude = 35.02, longitude = 135.02, speedMps = 20.0 / 3.6)
+        val last = sample(3, latitude = 35.0, longitude = 135.0001, speedMps = 20.0 / 3.6)
+
+        accumulator.add(first, second)
+        accumulator.add(second, outlier)
+        val result = accumulator.add(outlier, last)
+
+        assertEquals(9L, result.actualDistanceMeters)
     }
 
     @Test

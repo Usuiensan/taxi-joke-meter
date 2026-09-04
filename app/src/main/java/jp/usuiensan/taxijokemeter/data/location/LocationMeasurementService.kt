@@ -140,7 +140,7 @@ class LocationMeasurementService : Service() {
                     val mode = accumulation?.mode?.let { fareMode ->
                         if (fareMode == jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode.TIME || fareMode == jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode.TIME_FALLBACK) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
                     } ?: sample.speedMps?.let { speed ->
-                        if (speed * 3.6 < fareRule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
+                        if (speed * 3.6 <= fareRule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
                     } ?: current.chargeProgress?.mode ?: ChargeProgressMode.DISTANCE
                     jp.usuiensan.taxijokemeter.data.meter.ChargeProgressUiState(mode, ChargeProgressMapper.fraction(fareRule, values.chargeableDistanceMeters, values.lowSpeedSeconds))
                 } else current.chargeProgress,

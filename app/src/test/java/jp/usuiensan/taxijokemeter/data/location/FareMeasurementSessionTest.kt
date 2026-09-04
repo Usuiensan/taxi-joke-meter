@@ -97,7 +97,7 @@ class FareMeasurementSessionTest {
         assertEquals(null, session.end())
     }
 
-    @Test fun everyNonValidQualityDisconnectsThePreviousAnchor() {
+    @Test fun shortInvalidGapCanRecoverDistanceWithoutLowSpeedTime() {
         MeasurementQuality.entries.filter { it != MeasurementQuality.VALID }.forEach { quality ->
             val session = FareMeasurementSession(rule)
             session.begin()
@@ -106,24 +106,21 @@ class FareMeasurementSessionTest {
             session.add(sample(0.002, 3))
             session.add(sample(0.003, 4))
 
-            assertEquals(91L, session.end()!!.chargeableDistanceMeters)
+            assertEquals(182L, session.end()!!.chargeableDistanceMeters)
         }
     }
 
-    @Test fun poorAccuracyCallbackUsesTimeFallbackWithoutDistance() {
+    @Test fun poorAccuracyDoesNotAdvanceLowSpeedTime() {
         val session = FareMeasurementSession(rule)
         session.begin(OccupancyState.OCCUPIED)
         session.add(sample(0.001, 1, occupancyState = OccupancyState.OCCUPIED))
 
         val result = session.add(sample(0.002, 6, MeasurementQuality.POOR_ACCURACY, speedMps = null, occupancyState = OccupancyState.OCCUPIED))
 
-        assertEquals(FareMeasurementMode.TIME_FALLBACK, result?.mode)
-        assertEquals(0L, result?.actualDistanceMeters)
-        assertEquals(0L, result?.chargeableDistanceMeters)
-        assertEquals(5L, result?.lowSpeedSeconds)
+        assertEquals(null, result)
     }
 
-    @Test fun returningToValidAfterTimeFallbackDoesNotBridgeDistance() {
+    @Test fun returningToValidAfterPoorAccuracyDoesNotBridgeDistance() {
         val session = FareMeasurementSession(rule)
         session.begin(OccupancyState.OCCUPIED)
         session.add(sample(0.001, 1, occupancyState = OccupancyState.OCCUPIED))
@@ -131,10 +128,8 @@ class FareMeasurementSessionTest {
 
         val result = session.add(sample(0.003, 7, occupancyState = OccupancyState.OCCUPIED))
 
-        assertEquals(FareMeasurementMode.DISTANCE, result?.mode)
-        assertEquals(5L, result?.lowSpeedSeconds)
-        assertEquals(0L, result?.actualDistanceMeters)
-        assertEquals(0L, result?.chargeableDistanceMeters)
+        assertEquals(182L, result!!.chargeableDistanceMeters)
+        assertEquals(0L, result.lowSpeedSeconds)
     }
 
     private fun sample(

@@ -27,8 +27,8 @@ class TripMeasurementAccumulatorTest {
         val result = accumulator.add(sample(0, 0.0, 0.0, speedMps = 1.0), sample(60, 0.0, 0.001, speedMps = 1.0))
 
         assertEquals(0L, result.chargeableDistanceMeters)
-        assertEquals(111L, result.actualDistanceMeters)
-        assertEquals(60L, result.lowSpeedSeconds)
+        assertEquals(0L, result.actualDistanceMeters)
+        assertEquals(0L, result.lowSpeedSeconds)
     }
 
     @Test
@@ -79,6 +79,28 @@ class TripMeasurementAccumulatorTest {
 
         assertEquals(0L, result.chargeableDistanceMeters)
         assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test
+    fun validSamplesAfterShortGapRecoverDistanceWithoutInventingLowSpeedTime() {
+        val result = TripMeasurementAccumulator(rule).add(
+            sample(0, longitude = 135.0, speedMps = 12.0),
+            sample(5, longitude = 135.0005, speedMps = 12.0),
+        )
+
+        assertEquals(46L, result.chargeableDistanceMeters)
+        assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test
+    fun validSamplesAfterLongGapDoNotRecoverDistance() {
+        val result = TripMeasurementAccumulator(rule).add(
+            sample(0, longitude = 135.0, speedMps = 12.0),
+            sample(30, longitude = 135.0005, speedMps = 12.0),
+        )
+
+        assertEquals(0L, result.chargeableDistanceMeters)
+        assertEquals(0L, result.actualDistanceMeters)
     }
 
     @Test
@@ -161,6 +183,14 @@ class TripMeasurementAccumulatorTest {
     @Test
     fun onlyValidQualityIsChargeable() {
         assertEquals(setOf(MeasurementQuality.VALID, MeasurementQuality.POOR_ACCURACY, MeasurementQuality.STALE, MeasurementQuality.UNAVAILABLE), MeasurementQuality.entries.toSet())
+    }
+
+    @Test
+    fun poorAccuracyWithUnknownSpeedIsNotFareOrTimeFallback() {
+        val sample = sample(0, speedMps = null, quality = MeasurementQuality.POOR_ACCURACY)
+
+        assertEquals(false, sample.isFareContinuable)
+        assertEquals(false, sample.isTimeFallback)
     }
 
     @Test

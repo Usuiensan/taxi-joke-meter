@@ -35,9 +35,11 @@ import jp.usuiensan.taxijokemeter.data.meter.toMeterAudioCue
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQualityPolicy
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
+import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
 import jp.usuiensan.taxijokemeter.domain.location.ReverseGeocoder
 import jp.usuiensan.taxijokemeter.domain.location.reportAddressForAccuracy
-import jp.usuiensan.taxijokemeter.domain.location.BLOCK_MAX_METERS
+import jp.usuiensan.taxijokemeter.domain.location.PRECISE_MAX_METERS
+import jp.usuiensan.taxijokemeter.domain.location.TOWN_MAX_METERS
 import jp.usuiensan.taxijokemeter.domain.measurement.RestDistanceAccumulator
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.totalFareYen
@@ -93,14 +95,25 @@ class LocationMeasurementService : Service() {
     private var lastGeocodedLongitude: Double? = null
     private val geocodeInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     private var hasValidGpsFix = false
+    private var latestGpsLocation: Location? = null
     private lateinit var currentLocationGeocoder: ReverseGeocoder
     private var chargeModeController: ChargeProgressModeController? = null
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            val nowElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+            if (location.provider == LocationManager.NETWORK_PROVIDER && shouldIgnoreNetworkFix(
+                    latestGpsLocation?.elapsedRealtimeNanos?.takeIf { it > 0L },
+                    latestGpsLocation?.accuracy?.toDouble()?.takeIf { latestGpsLocation?.hasAccuracy() == true },
+                    nowElapsedRealtimeNanos,
+                )) return
+            val isGpsFix = location.provider == LocationManager.GPS_PROVIDER
+            if (isGpsFix) latestGpsLocation = location
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
-            val sample = mapper.map(location, runtimeState.sampleState, Instant.now())
-            if (sample.isDisplayValid) hasValidGpsFix = true
+            val sample = mapper.map(location, runtimeState.sampleState, Instant.now()).let {
+                if (isGpsFix) it else it.copy(measurementQuality = MeasurementQuality.POOR_ACCURACY)
+            }
+            if (isGpsFix && sample.isDisplayValid) hasValidGpsFix = true
             if (sample.isDisplayValid && shouldRefreshCurrentLocation(lastGeocodedAtMillis, lastGeocodedLatitude, lastGeocodedLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude) && geocodeInFlight.compareAndSet(false, true)) {
                 MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.GEOCODING)) }
                 val latitude = sample.latitude
@@ -114,11 +127,14 @@ class LocationMeasurementService : Service() {
                         MeterRuntimeStore.update { state ->
                             state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null && result.facilityName == null)) {
                                 state.currentLocation.copy(status = CurrentLocationStatus.GEOCODE_UNAVAILABLE)
+                            } else if (sample.accuracyMeters > TOWN_MAX_METERS) {
+                                state.currentLocation.copy(status = CurrentLocationStatus.AVAILABLE)
                             } else {
+                                val area = reportAddressForAccuracy(result, sample.accuracyMeters)
                                 CurrentLocationDisplayState(
-                                    roadName = result.roadName.takeIf { sample.accuracyMeters <= BLOCK_MAX_METERS },
-                                    areaText = reportAddressForAccuracy(result, sample.accuracyMeters),
-                                    facilityName = result.facilityName.takeIf { sample.accuracyMeters <= BLOCK_MAX_METERS },
+                                    roadName = result.roadName.takeIf { sample.accuracyMeters <= PRECISE_MAX_METERS } ?: state.currentLocation.roadName,
+                                    areaText = area ?: state.currentLocation.areaText,
+                                    facilityName = result.facilityName.takeIf { sample.accuracyMeters <= PRECISE_MAX_METERS } ?: state.currentLocation.facilityName,
                                     status = CurrentLocationStatus.AVAILABLE,
                                 )
                             })
@@ -128,8 +144,8 @@ class LocationMeasurementService : Service() {
                     }
                 }
             }
-            val accumulation = if (sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
-            runtimeState = runtimeState.advance(sample)
+            val accumulation = if (isGpsFix && sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
+            if (isGpsFix) runtimeState = runtimeState.advance(sample)
             val restId = MeterRuntimeStore.snapshot.value.restIntervalId.takeIf { sample.occupancyState == OccupancyState.REST }
             val restDistance = runtimeState.restDistanceMeters.takeIf { restId != null }
             MeasurementDebugStore.update { it.copy(health = healthTracker.healthAt(SystemClock.elapsedRealtimeNanos()), latestAccuracyMeters = sample.accuracyMeters, latestSpeedMps = sample.speedMps, roadMode = sample.roadMode.name) }
@@ -161,7 +177,7 @@ class LocationMeasurementService : Service() {
                     }
                 }
                 val imuAcceleration = imuMotionTracker.longitudinalAcceleration(sample.bearingDegrees)
-                safetyEventDetector.consume(sample, imuAcceleration, imuMotionTracker.state == ImuMountState.STABLE).forEach { signal ->
+                if (isGpsFix) safetyEventDetector.consume(sample, imuAcceleration, imuMotionTracker.state == ImuMountState.STABLE).forEach { signal ->
                     when (signal) {
                         is SafetyEventSignal.Started -> {
                             Log.d(TAG, "[SAFETY-DETECT] type=${signal.type} detectionId=${signal.detectionId} detectedAt=${signal.locationTimestampMillis} currentSpeedMps=${signal.currentSpeedMps} previousSpeedMps=${signal.previousSpeedMps} accelerationMps2=${signal.accelerationMps2} threshold=${signal.threshold} locationTimestamp=${signal.locationTimestampMillis} elapsedRealtime=${signal.elapsedRealtimeMillis}")
@@ -225,6 +241,7 @@ class LocationMeasurementService : Service() {
             chargeModeController = ChargeProgressModeController(fareRule.lowSpeedLimitKmh.toDouble()).also { it.reset() }
             savedSampleCount.set(0)
             hasValidGpsFix = false
+            latestGpsLocation = null
             MeterRuntimeStore.update { it.copy(currentLocation = CurrentLocationDisplayState(status = CurrentLocationStatus.GPS_LOADING)) }
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = runtimeState.sampleState.dutySessionId, roadMode = runtimeState.sampleState.roadMode.name))
             MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, roadMode = runtimeState.sampleState.roadMode) }

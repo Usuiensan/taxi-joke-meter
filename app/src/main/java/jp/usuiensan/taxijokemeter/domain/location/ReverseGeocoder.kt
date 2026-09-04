@@ -41,9 +41,15 @@ data class ReverseGeocodeResult(
 )
 
 fun reportAddressForAccuracy(result: ReverseGeocodeResult, accuracyMeters: Double): String? {
-    return result.reportAddress?.trim()?.takeIf(String::isNotEmpty)
-        ?: result.canonicalAddress?.trim()?.takeIf(String::isNotEmpty)
-        ?: result.areaText?.trim()?.takeIf(String::isNotEmpty)
+    val municipality = result.municipality?.trim()?.takeIf(::isJapaneseDisplayText)
+    val town = result.town?.trim()?.takeIf(::isJapaneseDisplayText)
+    val area = listOfNotNull(municipality, town, result.chome?.trim()?.takeIf(::isJapaneseDisplayText))
+        .distinct().joinToString("").takeIf(String::isNotEmpty)
+    return when {
+        accuracyMeters <= PRECISE_MAX_METERS -> result.reportAddress?.trim()?.takeIf(::isJapaneseDisplayText) ?: area
+        accuracyMeters <= BLOCK_MAX_METERS -> area
+        else -> municipality
+    }
 }
 
 fun addressDisplay(address: String?, facilityName: String?): String? {

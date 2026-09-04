@@ -84,9 +84,9 @@ class ReverseGeocoderTest {
         )!!
 
         assertEquals("城陽市寺田正道54-10", result.canonicalAddress)
-        listOf(23.0, 30.0, 30.1, 70.0, 100.0, 100.1, 180.0, 300.0, 300.1, 500.0).forEach { accuracy ->
-            assertEquals("城陽市寺田正道54-10", reportAddressForAccuracy(result, accuracy))
-        }
+        assertEquals("城陽市寺田正道54-10", reportAddressForAccuracy(result, 30.0))
+        assertEquals("城陽市", reportAddressForAccuracy(result, 60.0))
+        assertEquals("城陽市", reportAddressForAccuracy(result, 150.0))
         assertNull(japaneseRoadName("正道", null))
     }
 
@@ -135,7 +135,7 @@ class ReverseGeocoderTest {
     }
 
     @Test
-    fun reportAddressDoesNotChangeWithAccuracy() {
+    fun reportAddressBecomesCoarserAsAccuracyWorsens() {
         val result = ReverseGeocodeResult(
             canonicalAddress = "東京都平塚市土屋1038",
             reportAddress = "平塚市土屋1丁目1038",
@@ -151,10 +151,16 @@ class ReverseGeocoderTest {
         )
 
         assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 15.0))
-        assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 60.0))
-        assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 180.0))
-        assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 500.0))
+        assertEquals("平塚市土屋1丁目", reportAddressForAccuracy(result, 60.0))
+        assertEquals("平塚市", reportAddressForAccuracy(result, 180.0))
+        assertEquals("平塚市", reportAddressForAccuracy(result, 500.0))
         assertEquals("東京都平塚市土屋1038", result.canonicalAddress)
+    }
+
+    @Test
+    fun romanizedLabelIsNotUsedForLiveAddress() {
+        val result = ReverseGeocodeResult("正道第4公園, Uji-shi, KY, Japan", "Uji-shi, KY, Japan", "正道第4公園", null, null, "Uji-shi", "Uji-shi")
+        assertEquals(null, reportAddressForAccuracy(result, 150.0))
     }
 
     @Test

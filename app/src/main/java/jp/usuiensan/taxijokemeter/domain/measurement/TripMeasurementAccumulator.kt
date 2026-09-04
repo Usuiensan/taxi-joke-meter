@@ -40,13 +40,18 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
             val speedMps = current.speedMps ?: monotonicElapsed(distancePrevious, current)
                 ?.takeIf { it > Duration.ZERO }
                 ?.let { distance / it.toNanos() * 1_000_000_000.0 }
-            val accepted = elapsed != null && !elapsed.isZero && speedMps != null &&
-                isPlausibleDistance(distancePrevious, current, distance, elapsed)
+            val recoveryGap = elapsed?.toMillis()?.let { it > NORMAL_SAMPLE_GAP_MILLIS } == true &&
+                distancePrevious.elapsedRealtimeNanos != null && current.elapsedRealtimeNanos != null
+            val accepted = elapsed != null && elapsed.toMillis() <= MAX_GAP_MILLIS && !elapsed.isZero && speedMps != null &&
+                (!recoveryGap || isPlausibleAverageSpeed(distance, elapsed)) &&
+                (recoveryGap || isPlausibleDistance(distancePrevious, current, distance, elapsed))
             if (accepted) {
                 actualDistanceMeters += distance
             }
-            if (accepted) lastAcceptedSample = current
-            if (distanceOnly && accepted) {
+            if (accepted || (elapsed != null && elapsed.toMillis() > MAX_GAP_MILLIS)) lastAcceptedSample = current
+            if (recoveryGap && accepted) {
+                distanceMeters += distance
+            } else if (distanceOnly && accepted) {
                 distanceMeters += distance
             } else if (accepted && speedMps * 3.6 <= fareRule.lowSpeedLimitKmh) {
                 lowSpeedDuration = lowSpeedDuration.plus(elapsed)
@@ -77,6 +82,15 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
         val previousSpeed = previous.speedMps ?: speed
         val expected = maxOf(speed, previousSpeed) * elapsed.toNanos() / 1_000_000_000.0
         return distance <= maxOf(100.0, expected * 4.0 + maxOf(previous.accuracyMeters, current.accuracyMeters) * 2.0)
+    }
+
+    private fun isPlausibleAverageSpeed(distance: Double, elapsed: Duration): Boolean =
+        distance / elapsed.toNanos() * 3_600_000_000.0 <= MAX_PLAUSIBLE_AVERAGE_SPEED_KMH
+
+    private companion object {
+        const val NORMAL_SAMPLE_GAP_MILLIS = 2_000L
+        const val MAX_GAP_MILLIS = 15_000L
+        const val MAX_PLAUSIBLE_AVERAGE_SPEED_KMH = 200.0
     }
 
 }

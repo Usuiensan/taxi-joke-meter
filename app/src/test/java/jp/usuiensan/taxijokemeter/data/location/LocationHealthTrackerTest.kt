@@ -4,6 +4,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LocationHealthTrackerTest {
+    @Test fun freshGoodGpsBlocksAWeakerNetworkFix() {
+        assertEquals(true, shouldIgnoreNetworkFix(1_000_000_000L, 8.0, 4_000_000_000L))
+        assertEquals(false, shouldIgnoreNetworkFix(1_000_000_000L, 8.0, 6_000_000_000L))
+    }
+
     @Test fun transitionsFromValidToStaleToUnavailableUsingMonotonicTime() {
         val tracker = LocationHealthTracker()
         tracker.recordFix(1_000_000_000L)

@@ -38,16 +38,16 @@ class VirtualDriveFareTest {
         val truthDistance = rows.last()[18].toDouble()
         val rawObservedDistance = rows.last()[19].toDouble()
 
-        assertEquals(20_586L, accumulation.actualDistanceMeters)
-        assertEquals(19_315L, accumulation.chargeableDistanceMeters)
+        assertEquals(19_812L, accumulation.actualDistanceMeters)
+        assertEquals(18_541L, accumulation.chargeableDistanceMeters)
         assertEquals(697L, accumulation.lowSpeedSeconds)
         assertEquals(20_609.028, truthDistance, 0.001)
         assertTrue(rawObservedDistance - truthDistance > 2_000.0)
         assertEquals(1_936.111, breakdown.timeEquivalentDistanceMeters, 0.001)
-        assertEquals(21_251.111, breakdown.effectiveDistanceMeters, 0.001)
+        assertEquals(20_477.111, breakdown.effectiveDistanceMeters, 0.001)
         assertEquals(1_000L, breakdown.initialDistanceMeters)
-        assertEquals(21L, breakdown.subsequentChargeCount)
-        assertEquals(220L, breakdown.meteredFareYen)
+        assertEquals(20L, breakdown.subsequentChargeCount)
+        assertEquals(210L, breakdown.meteredFareYen)
     }
 
     private fun List<String>.toSample() = DrivingSample(

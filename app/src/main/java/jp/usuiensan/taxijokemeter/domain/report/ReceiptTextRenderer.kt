@@ -53,6 +53,8 @@ object ReceiptTextRenderer {
     }
 
     private fun StringBuilder.appendRight(label: String, value: String) {
-        appendLine((label + " ".repeat((WIDTH - label.length - value.length - 1).coerceAtLeast(1)) + value).take(WIDTH))
+        appendLine(label + " ".repeat((WIDTH - label.displayWidth() - value.displayWidth()).coerceAtLeast(1)) + value)
     }
+
+    private fun String.displayWidth() = sumOf { if (it.code in 0x1100..0x11ff || it.code in 0x2e80..0xa4cf || it.code in 0xac00..0xd7a3 || it.code in 0xf900..0xfaff || it.code in 0xff01..0xff60 || it.code in 0xffe0..0xffe6) 2 else 1 }
 }

@@ -63,6 +63,12 @@ data class SafetyReportData(
         }
     }
 
-    fun maxSpeed(mode: RoadMode): Int? = samples.filter { it.isValid && it.roadMode == mode }.mapNotNull { it.speedMps?.times(3.6)?.toInt() }.maxOrNull()
+    fun maxSpeed(mode: RoadMode, occupancyState: OccupancyState? = null): Int? = samples.filter {
+        it.isValid && it.roadMode == mode && when (occupancyState) {
+            null -> true
+            OccupancyState.OCCUPIED -> it.occupancyState == OccupancyState.OCCUPIED
+            else -> it.occupancyState != OccupancyState.OCCUPIED
+        }
+    }.mapNotNull { it.speedMps?.times(3.6)?.toInt() }.maxOrNull()
     fun distanceKm(): Double = samples.filter { it.isValid }.zipWithNext().sumOf { (a, b) -> jp.usuiensan.taxijokemeter.domain.measurement.RestDistanceAccumulator.add(a, b) } / 1000.0
 }

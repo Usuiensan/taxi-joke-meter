@@ -15,9 +15,9 @@ class DutyRecordModelTest {
         assertEquals(FareRoadMode.GENERAL, RoadMode.GENERAL.fare)
         assertEquals(SafetyRoadMode.GENERAL_60, RoadMode.GENERAL.safety)
         assertEquals(FareRoadMode.HIGHWAY, RoadMode.HIGHWAY1.fare)
-        assertEquals(SafetyRoadMode.URBAN_EXPRESSWAY_80, RoadMode.HIGHWAY1.safety)
+        assertEquals(SafetyRoadMode.HIGHWAY_90, RoadMode.HIGHWAY1.safety)
         assertEquals(FareRoadMode.HIGHWAY, RoadMode.HIGHWAY2.fare)
-        assertEquals(SafetyRoadMode.MOTORWAY_100, RoadMode.HIGHWAY2.safety)
+        assertEquals(SafetyRoadMode.HIGHWAY_90, RoadMode.HIGHWAY2.safety)
     }
 
     @Test fun keepsTripFieldsAndUnresolvedPlace() {

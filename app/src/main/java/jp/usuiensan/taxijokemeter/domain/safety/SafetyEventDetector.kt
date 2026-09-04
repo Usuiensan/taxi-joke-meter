@@ -6,7 +6,7 @@ import kotlin.math.abs
 import kotlin.math.max
 
 class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThresholds()) {
-    private data class AccelerationMeasurement(val value: Double, val previous: DrivingSample)
+    private data class AccelerationMeasurement(val value: Double, val previous: DrivingSample, val source: SafetyEventSource)
     private data class ActiveAcceleration(
         val type: SafetyEventType,
         val started: DrivingSample,
@@ -26,7 +26,7 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
     private var overspeedPeak = 0.0
     private var overspeedStartedSample: DrivingSample? = null
 
-    fun consume(sample: DrivingSample): List<SafetyEventSignal> {
+    fun consume(sample: DrivingSample, imuAccelerationMps2: Double? = null, imuStable: Boolean = false): List<SafetyEventSignal> {
         if (!isUsable(sample)) {
             history.clear()
             activeAcceleration = null
@@ -38,7 +38,7 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
         }
 
         val signals = buildList {
-            acceleration(sample)?.let { addAll(handleAcceleration(sample, it)) }
+            acceleration(sample, imuAccelerationMps2, imuStable)?.let { addAll(handleAcceleration(sample, it)) }
             addAll(handleOverspeed(sample))
         }
         history.addLast(sample)
@@ -55,13 +55,15 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
         return delta > 0 && delta <= thresholds.maxSampleGapSeconds * 1_000.0
     }
 
-    private fun acceleration(current: DrivingSample): AccelerationMeasurement? {
+    private fun acceleration(current: DrivingSample, imuAccelerationMps2: Double?, imuStable: Boolean): AccelerationMeasurement? {
+        if (imuStable) return imuAccelerationMps2?.let { AccelerationMeasurement(it, history.lastOrNull() ?: current, SafetyEventSource.IMU) }
+        if (imuAccelerationMps2 != null) return null
         val currentTime = timeMillis(current)
         val previous = history.minByOrNull { previous -> abs((currentTime - timeMillis(previous)) / 1_000.0 - 3.0) }
             ?: return null
         val seconds = (currentTime - timeMillis(previous)) / 1_000.0
         if (seconds !in thresholds.accelerationWindowMinSeconds..thresholds.accelerationWindowMaxSeconds) return null
-        return AccelerationMeasurement((current.speedMps!! - previous.speedMps!!) / seconds, previous)
+        return AccelerationMeasurement((current.speedMps!! - previous.speedMps!!) / seconds, previous, SafetyEventSource.GPS)
     }
 
     private fun handleAcceleration(sample: DrivingSample, measurement: AccelerationMeasurement): List<SafetyEventSignal> {
@@ -100,7 +102,7 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
         val belowSince = active.belowSinceMillis ?: now.also { active.belowSinceMillis = it }
         if (now - belowSince < thresholds.accelerationReleaseDurationSeconds * 1_000.0) return emptyList()
         activeAcceleration = null
-        return listOf(SafetyEventSignal.Completed(event(active.type, active.started, sample, active.peak, active.started.roadMode)))
+        return listOf(SafetyEventSignal.Completed(event(active.type, active.started, sample, active.peak, active.started.roadMode, measurement.source)))
     }
 
     private fun handleOverspeed(sample: DrivingSample): List<SafetyEventSignal> {
@@ -116,7 +118,7 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
             val belowSince = active.belowSinceMillis ?: now.also { active.belowSinceMillis = it }
             if (now - belowSince < thresholds.overspeedReleaseDurationSeconds * 1_000.0) return emptyList()
             activeOverspeed = null
-            return listOf(SafetyEventSignal.Completed(event(SafetyEventType.OVERSPEED, active.started, sample, active.peak, active.started.roadMode)))
+            return listOf(SafetyEventSignal.Completed(event(SafetyEventType.OVERSPEED, active.started, sample, active.peak, active.started.roadMode, SafetyEventSource.GPS)))
         }
 
         if (excess < thresholds.overspeedStartExcessKmh) {
@@ -145,11 +147,11 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
         ))
     }
 
-    private fun event(type: SafetyEventType, started: DrivingSample, ended: DrivingSample, peak: Double, roadMode: jp.usuiensan.taxijokemeter.domain.model.RoadMode) = SafetyEvent(
+    private fun event(type: SafetyEventType, started: DrivingSample, ended: DrivingSample, peak: Double, roadMode: jp.usuiensan.taxijokemeter.domain.model.RoadMode, source: SafetyEventSource) = SafetyEvent(
         type = type,
         startedAtElapsedRealtimeMillis = timeMillis(started), endedAtElapsedRealtimeMillis = timeMillis(ended),
         startedAtEpochMillis = started.timestamp.toEpochMilli(), endedAtEpochMillis = ended.timestamp.toEpochMilli(),
-        peakValue = peak, roadMode = roadMode, source = SafetyEventSource.GPS,
+        peakValue = peak, roadMode = roadMode, source = source,
     )
 
     private fun timeMillis(sample: DrivingSample) = sample.elapsedRealtimeNanos?.div(1_000_000L) ?: sample.timestamp.toEpochMilli()

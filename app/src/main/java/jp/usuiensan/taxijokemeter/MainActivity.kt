@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import jp.usuiensan.taxijokemeter.ui.shell.AppShell
 import jp.usuiensan.taxijokemeter.ui.theme.TaxiJokeMeterTheme
+import android.view.WindowManager
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

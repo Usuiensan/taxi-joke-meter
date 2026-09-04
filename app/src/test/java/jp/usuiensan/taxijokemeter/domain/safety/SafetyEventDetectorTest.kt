@@ -59,6 +59,16 @@ class SafetyEventDetectorTest {
         assertTrue(signals.none { it is SafetyEventSignal.Started })
     }
 
+    @Test fun stableImuAccelerationProducesImuSourcedEventWithoutGpsSpeedDifference() {
+        val detector = SafetyEventDetector()
+        detector.consume(sample(0, 0.0))
+        assertEquals(1, detector.consume(sample(1, 0.0), imuAccelerationMps2 = 3.0, imuStable = true).filterIsInstance<SafetyEventSignal.Started>().size)
+        detector.consume(sample(2, 0.0), imuAccelerationMps2 = 0.0, imuStable = true)
+        detector.consume(sample(3, 0.0), imuAccelerationMps2 = 0.0, imuStable = true)
+        val completed = detector.consume(sample(4, 0.0), imuAccelerationMps2 = 0.0, imuStable = true).filterIsInstance<SafetyEventSignal.Completed>()
+        assertEquals(SafetyEventSource.IMU, completed.single().event.source)
+    }
+
     private fun sample(
         second: Long,
         speedMps: Double,

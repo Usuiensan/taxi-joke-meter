@@ -11,6 +11,10 @@ import android.content.pm.ServiceInfo
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.IBinder
 import android.os.Looper
 import android.os.Handler
@@ -40,11 +44,13 @@ import jp.usuiensan.taxijokemeter.domain.model.totalFareYen
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSignal
+import jp.usuiensan.taxijokemeter.data.location.ImuMotionTracker
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
 import jp.usuiensan.taxijokemeter.data.meter.toMeterRuntimeState
 import jp.usuiensan.taxijokemeter.data.meter.safetyWarningText
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMode
+import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressModeController
 import jp.usuiensan.taxijokemeter.data.meter.CurrentLocationDisplayState
 import jp.usuiensan.taxijokemeter.data.meter.CurrentLocationStatus
 import jp.usuiensan.taxijokemeter.data.meter.shouldRefreshCurrentLocation
@@ -71,6 +77,8 @@ class LocationMeasurementService : Service() {
     private lateinit var repository: DrivingSampleRepository
     private lateinit var safetyEventRepository: SafetyEventRepository
     private val safetyEventDetector = SafetyEventDetector()
+    private val imuMotionTracker = ImuMotionTracker()
+    private lateinit var sensorManager: SensorManager
     private lateinit var audioCuePlayer: AudioCuePlayer
     private lateinit var mapper: LocationSampleMapper
     private lateinit var fareRule: FareRule
@@ -86,6 +94,7 @@ class LocationMeasurementService : Service() {
     private val geocodeInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     private var hasValidGpsFix = false
     private lateinit var currentLocationGeocoder: ReverseGeocoder
+    private var chargeModeController: ChargeProgressModeController? = null
 
     private val listener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -104,7 +113,7 @@ class LocationMeasurementService : Service() {
                         lastGeocodedLongitude = longitude
                         MeterRuntimeStore.update { state ->
                             state.copy(currentLocation = if (result == null || (result.roadName == null && result.areaText == null && result.facilityName == null)) {
-                                CurrentLocationDisplayState(status = CurrentLocationStatus.GEOCODE_UNAVAILABLE)
+                                state.currentLocation.copy(status = CurrentLocationStatus.GEOCODE_UNAVAILABLE)
                             } else {
                                 CurrentLocationDisplayState(
                                     roadName = result.roadName.takeIf { sample.accuracyMeters <= BLOCK_MAX_METERS },
@@ -137,11 +146,7 @@ class LocationMeasurementService : Service() {
                 restDistanceMeters = restDistance?.toLong() ?: current.restDistanceMeters,
                 chargeProgress = if (sample.isFareContinuable) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
-                    val mode = accumulation?.mode?.let { fareMode ->
-                        if (fareMode == jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode.TIME || fareMode == jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode.TIME_FALLBACK) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
-                    } ?: sample.speedMps?.let { speed ->
-                        if (speed * 3.6 <= fareRule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
-                    } ?: current.chargeProgress?.mode ?: ChargeProgressMode.DISTANCE
+                    val mode = chargeModeController?.update(sample.speedMps, sample.timestamp.toEpochMilli()) ?: current.chargeProgress?.mode ?: ChargeProgressMode.DISTANCE
                     jp.usuiensan.taxijokemeter.data.meter.ChargeProgressUiState(mode, ChargeProgressMapper.fraction(fareRule, values.chargeableDistanceMeters, values.lowSpeedSeconds))
                 } else current.chargeProgress,
             ) }
@@ -155,7 +160,8 @@ class LocationMeasurementService : Service() {
                         healthHandler.post { finishRestAutomatically(restId, restDistance) }
                     }
                 }
-                safetyEventDetector.consume(sample).forEach { signal ->
+                val imuAcceleration = imuMotionTracker.longitudinalAcceleration(sample.bearingDegrees)
+                safetyEventDetector.consume(sample, imuAcceleration, imuMotionTracker.state == ImuMountState.STABLE).forEach { signal ->
                     when (signal) {
                         is SafetyEventSignal.Started -> {
                             Log.d(TAG, "[SAFETY-DETECT] type=${signal.type} detectionId=${signal.detectionId} detectedAt=${signal.locationTimestampMillis} currentSpeedMps=${signal.currentSpeedMps} previousSpeedMps=${signal.previousSpeedMps} accelerationMps2=${signal.accelerationMps2} threshold=${signal.threshold} locationTimestamp=${signal.locationTimestampMillis} elapsedRealtime=${signal.elapsedRealtimeMillis}")
@@ -187,13 +193,15 @@ class LocationMeasurementService : Service() {
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
+        sensorManager = getSystemService(SensorManager::class.java)
         database = DutyDatabase.build(this)
         repository = DrivingSampleRepository(database)
         safetyEventRepository = SafetyEventRepository(database)
         audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(this, cue) }, MediaPlayerAudioCueSink(this), safetyPlaybackGuard = jp.usuiensan.taxijokemeter.data.meter.ProcessSafetyPlaybackGuard)
         mapper = LocationSampleMapper(MeasurementQualityPolicy(20.0, Duration.ofSeconds(5)))
-        currentLocationGeocoder = AndroidReverseGeocoder(this)
+        currentLocationGeocoder = OpenRouteServiceReverseGeocoder()
         createNotificationChannel()
+        registerImuSensors()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -214,6 +222,7 @@ class LocationMeasurementService : Service() {
                 intent.getIntExtra(EXTRA_LOW_SPEED_TIME_INCREMENT_SECONDS, 0),
             )
             fareMeasurement = FareMeasurementSession(fareRule)
+            chargeModeController = ChargeProgressModeController(fareRule.lowSpeedLimitKmh.toDouble()).also { it.reset() }
             savedSampleCount.set(0)
             hasValidGpsFix = false
             MeterRuntimeStore.update { it.copy(currentLocation = CurrentLocationDisplayState(status = CurrentLocationStatus.GPS_LOADING)) }
@@ -271,6 +280,7 @@ class LocationMeasurementService : Service() {
     }
 
     override fun onDestroy() {
+        sensorManager.unregisterListener(imuListener)
         locationManager.removeUpdates(listener)
         healthHandler.removeCallbacks(healthWatchdog)
         scope.cancel()
@@ -335,6 +345,17 @@ class LocationMeasurementService : Service() {
             .build()
         if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         else startForeground(NOTIFICATION_ID, notification)
+    }
+
+    private val imuListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) = imuMotionTracker.onSensorChanged(event)
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
+
+    private fun registerImuSensors() {
+        listOf(Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE, Sensor.TYPE_ROTATION_VECTOR).forEach { type ->
+            sensorManager.getDefaultSensor(type)?.let { sensorManager.registerListener(imuListener, it, SensorManager.SENSOR_DELAY_GAME) }
+        }
     }
 
     private fun registerLocationProviders() {

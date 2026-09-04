@@ -164,10 +164,10 @@ class TripMeasurementAccumulatorTest {
     }
 
     @Test
-    fun exposesSafetyLimitsForEachRoadMode() {
+    fun exposesTwoSafetyLimitsIncludingLegacyHighway() {
         assertEquals(60, RoadMode.GENERAL.safetyLimitKmh)
-        assertEquals(80, RoadMode.HIGHWAY1.safetyLimitKmh)
-        assertEquals(100, RoadMode.HIGHWAY2.safetyLimitKmh)
+        assertEquals(90, RoadMode.HIGHWAY1.safetyLimitKmh)
+        assertEquals(90, RoadMode.HIGHWAY2.safetyLimitKmh)
     }
 
     private fun sample(

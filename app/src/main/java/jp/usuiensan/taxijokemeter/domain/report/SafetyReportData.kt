@@ -8,6 +8,7 @@ import jp.usuiensan.taxijokemeter.domain.safety.SafetyEvaluator
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEvent
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.model.isHighwayForReport
 import java.time.Duration
 import java.time.Instant
 
@@ -64,7 +65,7 @@ data class SafetyReportData(
     }
 
     fun maxSpeed(mode: RoadMode, occupancyState: OccupancyState? = null): Int? = samples.filter {
-        it.isValid && it.roadMode == mode && when (occupancyState) {
+        it.isValid && (if (mode == RoadMode.HIGHWAY2) it.roadMode.isHighwayForReport() else it.roadMode == mode) && when (occupancyState) {
             null -> true
             OccupancyState.OCCUPIED -> it.occupancyState == OccupancyState.OCCUPIED
             else -> it.occupancyState != OccupancyState.OCCUPIED

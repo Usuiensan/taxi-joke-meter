@@ -8,15 +8,16 @@ import org.junit.Test
 class RoadModeControllerTest {
     private val controller = RoadModeController()
 
-    @Test fun directSelectionUsesExistingRoadModes() {
+    @Test fun directSelectionExposesOnlyGeneralAndHighway() {
         assertEquals(RoadMode.HIGHWAY2, controller.select(RoadMode.GENERAL, RoadMode.HIGHWAY2).nextMode)
-        assertEquals(null, controller.select(RoadMode.HIGHWAY1, RoadMode.HIGHWAY1).safetyRoadModeChange)
+        assertEquals(RoadMode.HIGHWAY1, controller.select(RoadMode.HIGHWAY1, RoadMode.HIGHWAY1).nextMode)
+        assertEquals(null, controller.select(RoadMode.GENERAL, RoadMode.HIGHWAY1).safetyRoadModeChange)
     }
 
-    @Test fun shortPressCyclesHighwayModes() {
-        assertEquals(RoadMode.HIGHWAY1, controller.transition(RoadMode.GENERAL, RoadModeAction.SHORT_PRESS).nextMode)
+    @Test fun shortPressTogglesGeneralAndHighwayWithoutLegacyMode() {
+        assertEquals(RoadMode.HIGHWAY2, controller.transition(RoadMode.GENERAL, RoadModeAction.SHORT_PRESS).nextMode)
+        assertEquals(RoadMode.GENERAL, controller.transition(RoadMode.HIGHWAY2, RoadModeAction.SHORT_PRESS).nextMode)
         assertEquals(RoadMode.HIGHWAY2, controller.transition(RoadMode.HIGHWAY1, RoadModeAction.SHORT_PRESS).nextMode)
-        assertEquals(RoadMode.HIGHWAY1, controller.transition(RoadMode.HIGHWAY2, RoadModeAction.SHORT_PRESS).nextMode)
     }
 
     @Test fun longPressReturnsHighwayModesToGeneral() {
@@ -33,7 +34,7 @@ class RoadModeControllerTest {
 
     @Test fun modeChangeCarriesSafetyRoadModeChange() {
         assertEquals(
-            SafetyRoadModeChange(RoadMode.GENERAL, RoadMode.HIGHWAY1),
+            SafetyRoadModeChange(RoadMode.GENERAL, RoadMode.HIGHWAY2),
             controller.transition(RoadMode.GENERAL, RoadModeAction.SHORT_PRESS).safetyRoadModeChange,
         )
     }
@@ -44,7 +45,7 @@ class RoadModeControllerTest {
             controller.transition(RoadMode.HIGHWAY1, RoadModeAction.SHORT_PRESS).safetyRoadModeChange,
         )
         assertEquals(
-            SafetyRoadModeChange(RoadMode.HIGHWAY2, RoadMode.HIGHWAY1),
+            SafetyRoadModeChange(RoadMode.HIGHWAY2, RoadMode.GENERAL),
             controller.transition(RoadMode.HIGHWAY2, RoadModeAction.SHORT_PRESS).safetyRoadModeChange,
         )
         assertEquals(

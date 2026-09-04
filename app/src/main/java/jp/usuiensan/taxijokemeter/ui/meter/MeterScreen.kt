@@ -60,6 +60,7 @@ import jp.usuiensan.taxijokemeter.domain.meter.MeterAction
 import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.model.selectableRoadModes
 import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentType
 import jp.usuiensan.taxijokemeter.domain.location.LocationAccessState
 import jp.usuiensan.taxijokemeter.domain.location.addressDisplay
@@ -87,7 +88,7 @@ private val MeterFontFamily = FontFamily(
 )
 
 @Composable
-fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}, onOpenDebug: () -> Unit = {}, onOpenReissue: () -> Unit = {}, locationAccess: LocationAccessState = LocationAccessState.LOCATION_READY, onRequestLocationPermission: () -> Unit = {}, onOpenAppSettings: () -> Unit = {}, onOpenLocationSettings: () -> Unit = {}) {
+fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}, onOpenDebug: () -> Unit = {}, onOpenReissue: () -> Unit = {}, locationAccess: LocationAccessState = LocationAccessState.LOCATION_READY, onRequestLocationPermission: () -> Unit = {}, onOpenAppSettings: () -> Unit = {}, onOpenLocationSettings: () -> Unit = {}, onShareReceipt: () -> Unit = {}, onShareSafetyReport: () -> Unit = {}, onOpenReport: () -> Unit = {}) {
     CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = MeterFontFamily)) {
         Box(
             modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
@@ -103,7 +104,7 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
                         scaleY = scale
                     },
                 ) {
-                    LandscapeMeterLayout(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue)
+                    LandscapeMeterLayout(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue, onShareReceipt, onShareSafetyReport, onOpenReport)
                     if (locationAccess == LocationAccessState.LOCATION_PERMISSION_NONE || locationAccess == LocationAccessState.PERMISSION_SETTINGS_REQUIRED || locationAccess == LocationAccessState.LOCATION_SERVICE_OFF) {
                         LocationRecoveryPanel(locationAccess, onRequestLocationPermission, onOpenAppSettings, onOpenLocationSettings, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
                     }
@@ -114,12 +115,12 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
 }
 
 @Composable
-private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit) {
-    MeterReferenceLayout(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue)
+private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit, onShareReceipt: () -> Unit, onShareSafetyReport: () -> Unit, onOpenReport: () -> Unit) {
+    MeterReferenceLayout(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue, onShareReceipt, onShareSafetyReport, onOpenReport)
 }
 
 @Composable
-private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit) {
+private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit, onShareReceipt: () -> Unit, onShareSafetyReport: () -> Unit, onOpenReport: () -> Unit) {
     var passengerControlsVisible by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxSize(),
@@ -139,7 +140,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
                 MeterDateHeader()
             }
             BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller, passengerControlsVisible)
-            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue) { passengerControlsVisible = !passengerControlsVisible }
+            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue, onShareReceipt, onShareSafetyReport, onOpenReport) { passengerControlsVisible = !passengerControlsVisible }
         }
 
         Column(modifier = Modifier.width(92.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -498,11 +499,11 @@ internal fun fareDisplaySizing(state: MeterState, availableHeightDp: Float, numb
     return FareDisplaySizing(numberSp, numberSp * 0.4f)
 }
 
-internal fun roadModeButtonModes() = listOf(RoadMode.GENERAL, RoadMode.HIGHWAY1, RoadMode.HIGHWAY2)
+internal fun roadModeButtonModes() = selectableRoadModes
 
 internal fun roadModeLabel(mode: RoadMode) = when (mode) {
     RoadMode.GENERAL -> "一般"
-    RoadMode.HIGHWAY1 -> "専用道"
+    RoadMode.HIGHWAY1 -> "高速"
     RoadMode.HIGHWAY2 -> "高速"
 }
 
@@ -586,7 +587,7 @@ internal fun formatRestDuration(startedAt: Instant?, now: Instant): String {
 }
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit, onTogglePassengerControls: () -> Unit) {
+private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit, onShareReceipt: () -> Unit, onShareSafetyReport: () -> Unit, onOpenReport: () -> Unit, onTogglePassengerControls: () -> Unit) {
     val rows = if (runtime.meterState == MeterState.EMPTY) emptyMenuRows() else listOf(softKeySlots(runtime.meterState, runtime.menu == MeterMenu.EMPTY_MENU))
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEach { row ->
@@ -615,6 +616,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                                 runtime.meterState == MeterState.EMPTY && label == "回送" -> ({ controller.dispatch(MeterAction.DEADHEAD) })
                                 runtime.meterState == MeterState.EMPTY && label == "デバッグ" -> ({ controller.dispatch(MeterAction.BACK); onOpenDebug() })
                                 runtime.meterState == MeterState.EMPTY && label == "再発行" -> onOpenReissue
+                                runtime.meterState == MeterState.EMPTY && label == "レポート" -> onOpenReport
                                 runtime.meterState == MeterState.EMPTY && label == "運賃制" -> onOpenFareSettings
                                 runtime.meterState == MeterState.OCCUPIED && label == "人員" -> onTogglePassengerControls
                                 runtime.meterState == MeterState.OCCUPIED && label == "経由地" -> ({ controller.addWaypoint() })
@@ -623,6 +625,8 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                                 runtime.meterState == MeterState.OCCUPIED && label == "割引" -> ({ controller.toggleFareAdjustment(FareAdjustmentType.DISCOUNT) })
                                 runtime.meterState == MeterState.REST && label == "解除" -> ({ controller.dispatch(MeterAction.REST_RELEASE) })
                                 runtime.meterState == MeterState.DEADHEAD && label == "解除" -> ({ controller.dispatch(MeterAction.RELEASE) })
+                                runtime.meterState == MeterState.TOTAL && label == "レシート共有" -> onShareReceipt
+                                runtime.meterState == MeterState.TOTAL && label == "安全レポート共有" -> onShareSafetyReport
                                 else -> null
                             },
                         )
@@ -646,7 +650,7 @@ internal fun softKeySlots(state: MeterState, emptyMenu: Boolean = false): List<S
     else -> when (state) {
     MeterState.OCCUPIED -> listOf("人員", "経由地", "迎車", "割増", "割引")
     MeterState.PAYMENT -> listOf("迎車", null, null, null, null)
-    MeterState.TOTAL -> listOf(null, null, null, null, null)
+    MeterState.TOTAL -> listOf("レシート共有", "安全レポート共有", null, null, null)
     MeterState.DEADHEAD -> listOf(null, null, null, null, "解除")
     MeterState.REST -> listOf(null, null, null, null, "解除")
     MeterState.PICKUP -> listOf(null, null, null, null, null)

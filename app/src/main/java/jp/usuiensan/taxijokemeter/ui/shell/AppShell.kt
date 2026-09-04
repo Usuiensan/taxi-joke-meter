@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -119,7 +120,8 @@ fun AppShell() {
         } else {
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
-        if (showMeter) meterController.ensureMeasurementRunning()
+        if (showMeter) { meterController.ensureMeasurementRunning(); activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+        else activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { }
     }
     BackHandler(enabled = true) {
@@ -136,9 +138,59 @@ fun AppShell() {
             showSettings -> FareRuleSettingsScreen(padding) { showSettings = false; showMeter = true }
             showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, openFareSettings)
             showReissue -> ReissueScreen(padding) { showReissue = false; showMeter = true }
-            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false }, { showReissue = true; showMeter = false }, locationAccess, { locationPreferences.edit().putBoolean("location_permission_requested_once", true).apply(); requestLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }, openAppSettings, openLocationSettings)
+            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false }, { showReissue = true; showMeter = false }, locationAccess, { locationPreferences.edit().putBoolean("location_permission_requested_once", true).apply(); requestLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }, openAppSettings, openLocationSettings, { shareLatest(context, false) }, { shareLatest(context, true) }, { shareTodayReport(context) })
             else -> MeterScreen(padding, meterRuntime, meterController)
         }
+    }
+}
+
+private fun shareLatest(context: Context, safety: Boolean) {
+    val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main)
+    scope.launch {
+        val session = MeterRuntimeStore.snapshot.value.dutySessionId ?: return@launch
+        val result = withContext(Dispatchers.IO) {
+            val db = DutyDatabase.build(context)
+            try {
+                val artifacts = ReceiptArtifactStore(context)
+                val receipt = ReceiptRepository(db).findForSession(session).lastOrNull() ?: return@withContext null
+                if (!safety) artifacts.share(artifacts.writePng(receipt), "image/png") else {
+                    val samples = DrivingSampleRepository(db).findByDutySessionId(session)
+                    val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
+                    artifacts.share(artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, ReceiptRepository(db).findForSession(session))), "image/png")
+                }
+            } finally { db.close() }
+        }
+        result?.let { context.startActivity(Intent.createChooser(it, if (safety) "安全運転レポートを共有" else "レシートを共有")) }
+    }
+}
+
+private fun shareTodayReport(context: Context) {
+    val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main)
+    scope.launch {
+        val result = withContext(Dispatchers.IO) {
+            val db = DutyDatabase.build(context)
+            try {
+                val receipts = ReceiptRepository(db)
+                val date = LocalDate.now(ZoneId.of("Asia/Tokyo"))
+                val session = MeterRuntimeStore.snapshot.value.dutySessionId
+                    ?: receipts.findForServiceDate(date.toString()).lastOrNull()?.dutySessionId
+                    ?: return@withContext null
+                val samples = DrivingSampleRepository(db).findByDutySessionId(session)
+                val trips = receipts.findForSession(session)
+                if (samples.isEmpty() && trips.isEmpty()) return@withContext null
+                val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start ->
+                    samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end ->
+                        SafetyEventRepository(db).getEventsBetween(start, end + 1_000)
+                    }
+                } ?: emptyList()
+                val artifacts = ReceiptArtifactStore(context)
+                val file = artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, trips))
+                val name = "safety_report_${date.toString().replace("-", "")}_${System.currentTimeMillis()}.png"
+                artifacts.shareUri(artifacts.savePngToGallery(file, name), "image/png")
+            } finally { db.close() }
+        }
+        result?.let { context.startActivity(Intent.createChooser(it, "今日の安全運転レポートを共有")) }
+            ?: Toast.makeText(context, "今日のレポートデータがありません", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -167,8 +219,8 @@ private fun ReissueScreen(contentPadding: androidx.compose.foundation.layout.Pad
         }
         selected?.let { receipt ->
             Text(ReceiptTextRenderer.render(receipt))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { val file = artifacts.writeText(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "text/plain"), "TXT共有")) }) { Text("TXT共有") }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { val file = artifacts.writeText(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "text/plain"), "TXT共有")) }, modifier = Modifier.fillMaxWidth()) { Text("TXT共有") }
                 Button(onClick = { scope.launch {
                     runCatching {
                         val file = withContext(Dispatchers.IO) {
@@ -177,15 +229,15 @@ private fun ReissueScreen(contentPadding: androidx.compose.foundation.layout.Pad
                                 val trips = ReceiptRepository(db).findForSession(receipt.dutySessionId)
                                 val samples = DrivingSampleRepository(db).findByDutySessionId(receipt.dutySessionId)
                                 val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                                artifacts.writeSafetyReportPdf(SafetyReportData.from(java.time.Instant.now(), samples, events, trips))
+                                artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, trips))
                             } finally { db.close() }
                         }
-                        context.startActivity(Intent.createChooser(artifacts.share(file, "application/pdf"), "安全運転レポートを共有"))
+                        context.startActivity(Intent.createChooser(artifacts.share(file, "image/png"), "安全運転レポートを共有"))
                     }
-                } }) { Text("安全運転レポート") }
-                Button(onClick = { scope.launch { runCatching { val file = withContext(Dispatchers.IO) { artifacts.writePdf(receipt) }; context.startActivity(Intent.createChooser(artifacts.share(file, "application/pdf"), "走行レシートを共有")) } } }) { Text("走行レシート") }
-                Button(onClick = { context.startActivity(artifacts.view(artifacts.writePng(receipt))) }) { Text("PNG表示") }
-                Button(onClick = { val file = artifacts.writePng(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "image/png"), "PNG共有")) }) { Text("PNG共有") }
+                } }, modifier = Modifier.fillMaxWidth()) { Text("安全運転レポート") }
+                Button(onClick = { scope.launch { runCatching { val file = withContext(Dispatchers.IO) { artifacts.writePdf(receipt) }; context.startActivity(Intent.createChooser(artifacts.share(file, "application/pdf"), "走行レシートを共有")) } } }, modifier = Modifier.fillMaxWidth()) { Text("走行レシート") }
+                Button(onClick = { context.startActivity(artifacts.view(artifacts.writePng(receipt))) }, modifier = Modifier.fillMaxWidth()) { Text("PNG表示") }
+                Button(onClick = { val file = artifacts.writePng(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "image/png"), "PNG共有")) }, modifier = Modifier.fillMaxWidth()) { Text("PNG共有") }
             }
         }
         Button(onClick = onBack) { Text("戻る") }

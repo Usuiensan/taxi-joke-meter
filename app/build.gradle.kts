@@ -5,10 +5,13 @@ plugins {
 }
 
 android { namespace = "jp.usuiensan.taxijokemeter"; compileSdk = 37
-    defaultConfig { applicationId = "jp.usuiensan.taxijokemeter"; minSdk = 26; targetSdk = 37; versionCode = 1; versionName = "0.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    buildFeatures { compose = true; buildConfig = true }
+    defaultConfig {
+        applicationId = "jp.usuiensan.taxijokemeter"; minSdk = 26; targetSdk = 37; versionCode = 1; versionName = "0.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "ORS_API_KEY", "\"${providers.gradleProperty("orsApiKey").orElse("").get()}\"")
+    }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    buildFeatures { compose = true }
 }
 
 dependencies {

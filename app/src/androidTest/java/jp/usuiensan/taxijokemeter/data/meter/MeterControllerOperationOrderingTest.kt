@@ -79,7 +79,7 @@ class MeterControllerOperationOrderingTest {
         MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = sessionId))
         context.startedServices.clear()
 
-        controller.setRoadMode(RoadMode.HIGHWAY1)
+        controller.setRoadMode(RoadMode.HIGHWAY2)
         controller.toggleReservation()
 
         waitUntil { context.startedServices.any { it.action == LocationMeasurementService.ACTION_UPDATE_STATE } }

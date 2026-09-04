@@ -24,3 +24,30 @@ object ChargeProgressMapper {
         return (((combined - initial) % increment) / increment).toFloat().coerceIn(0f, 1f)
     }
 }
+
+/** Keeps the visual state stable while the fare accumulator continues using its own exact samples. */
+class ChargeProgressModeController(
+    private val lowSpeedKmh: Double,
+    private val timeToEnterMillis: Long = 5_000L,
+    private val timeToExitMillis: Long = 3_000L,
+    private val exitSpeedKmh: Double = lowSpeedKmh + 2.0,
+) {
+    private var mode = ChargeProgressMode.DISTANCE
+    private var candidateSince: Long? = null
+
+    fun reset(initial: ChargeProgressMode = ChargeProgressMode.DISTANCE) { mode = initial; candidateSince = null }
+
+    fun update(speedMps: Double?, nowMillis: Long): ChargeProgressMode {
+        val speed = speedMps?.takeIf(Double::isFinite)?.times(3.6) ?: return mode
+        val target = when {
+            mode == ChargeProgressMode.DISTANCE && speed <= lowSpeedKmh -> ChargeProgressMode.TIME
+            mode == ChargeProgressMode.TIME && speed >= exitSpeedKmh -> ChargeProgressMode.DISTANCE
+            else -> mode
+        }
+        if (target == mode) { candidateSince = null; return mode }
+        val since = candidateSince ?: nowMillis.also { candidateSince = it }
+        val duration = if (target == ChargeProgressMode.TIME) timeToEnterMillis else timeToExitMillis
+        if (nowMillis - since >= duration) { mode = target; candidateSince = null }
+        return mode
+    }
+}

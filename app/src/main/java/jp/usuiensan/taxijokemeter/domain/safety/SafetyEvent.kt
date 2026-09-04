@@ -3,7 +3,7 @@ package jp.usuiensan.taxijokemeter.domain.safety
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 
 enum class SafetyEventType { OVERSPEED, HARD_ACCELERATION, HARD_DECELERATION }
-enum class SafetyEventSource { GPS }
+enum class SafetyEventSource { GPS, IMU }
 
 data class SafetyThresholds(
     val hardAccelerationMps2: Double = 2.5,

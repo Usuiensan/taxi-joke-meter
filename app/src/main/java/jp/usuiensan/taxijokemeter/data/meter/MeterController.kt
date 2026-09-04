@@ -9,7 +9,10 @@ import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
 import jp.usuiensan.taxijokemeter.data.location.hasLocationPermission
-import jp.usuiensan.taxijokemeter.data.location.AndroidReverseGeocoder
+import jp.usuiensan.taxijokemeter.data.location.OpenRouteServiceReverseGeocoder
+import jp.usuiensan.taxijokemeter.data.receipt.ReceiptArtifactStore
+import jp.usuiensan.taxijokemeter.data.receipt.ReceiptRepository
+import jp.usuiensan.taxijokemeter.data.safety.SafetyEventRepository
 import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleRepository
 import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
@@ -57,7 +60,7 @@ class MeterController internal constructor(
     private val reverseGeocodeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val operationMutex = Mutex()
     private val measurement = DutyMeasurementController(context)
-    private val reverseGeocoder = reverseGeocoder ?: AndroidReverseGeocoder(context)
+    private val reverseGeocoder = reverseGeocoder ?: OpenRouteServiceReverseGeocoder()
     private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context), safetyPlaybackGuard = ProcessSafetyPlaybackGuard)
     private val roadModeController = RoadModeController()
     private var sessionId: String? = null
@@ -303,7 +306,19 @@ class MeterController internal constructor(
         val current = trip ?: return
         val completed = current.copy(fareAdjustmentType = value.fareAdjustmentType, fareAdjustmentPercent = value.fareAdjustmentPercent, dropoffAt = Instant.now(), operatingDistanceMeters = value.chargeableDistanceMeters, fareYen = value.meteredFareYen, status = status, lowSpeedSeconds = value.lowSpeedSeconds, revenueIncluded = revenueIncluded, actualDistanceMeters = value.actualDistanceMeters, chargeableDistanceMeters = value.chargeableDistanceMeters, meteredFareYen = value.meteredFareYen, totalFareYen = value.fareYen, additionalChargeYen = value.fareChargesYen)
         val db = database()
-        try { DutyRecordRepository(db).finishTrip(completed, status, revenueIncluded) } finally { db.close() }
+        try {
+            DutyRecordRepository(db).finishTrip(completed, status, revenueIncluded)
+            if (status == TripStatus.COMPLETED) runCatching {
+                val artifacts = ReceiptArtifactStore(context)
+                val receipt = ReceiptRepository(db).findById(completed.id) ?: return@runCatching
+                val stamp = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Tokyo"))
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"))
+                artifacts.savePngToGallery(artifacts.writePng(receipt), "receipt_${stamp}.png")
+                val samples = DrivingSampleRepository(db).findByDutySessionId(receipt.dutySessionId)
+                val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
+                artifacts.savePngToGallery(artifacts.writeSafetyReportPng(jp.usuiensan.taxijokemeter.domain.report.SafetyReportData.from(java.time.Instant.now(), samples, events, ReceiptRepository(db).findForSession(receipt.dutySessionId))), "safety_report_${stamp}.png")
+            }
+        } finally { db.close() }
         trip = null
     }
 

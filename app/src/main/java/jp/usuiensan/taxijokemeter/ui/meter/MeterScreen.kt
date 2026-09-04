@@ -62,6 +62,7 @@ import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentType
 import jp.usuiensan.taxijokemeter.domain.location.LocationAccessState
+import jp.usuiensan.taxijokemeter.domain.location.addressDisplay
 import jp.usuiensan.taxijokemeter.data.meter.SafetyWarning
 import jp.usuiensan.taxijokemeter.R
 import java.time.LocalDateTime
@@ -548,9 +549,10 @@ private fun PassengerControls(runtime: MeterRuntimeSnapshot, controller: MeterCo
 private fun CurrentLocationDisplay(location: jp.usuiensan.taxijokemeter.data.meter.CurrentLocationDisplayState, modifier: Modifier) {
     Column(modifier) {
         location.roadName?.let { Text(it, color = MeterWhite, fontSize = 26.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        location.areaText?.let { Text(it, color = MeterWhite, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        location.facilityName?.takeIf { it != location.areaText && it != location.roadName }?.let { Text(it, color = MeterWhite, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        if (location.roadName == null && location.areaText == null && location.facilityName == null) Text(
+        val displayAddress = addressDisplay(location.areaText, location.facilityName)
+        displayAddress?.let { Text(it, color = MeterWhite, fontSize = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        location.facilityName?.takeIf { it != displayAddress && it != location.roadName }?.let { Text(it, color = MeterWhite, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        if (location.roadName == null && displayAddress == null && location.facilityName == null) Text(
             when (location.status) {
                 CurrentLocationStatus.GPS_LOADING -> "位置情報を取得中…"
                 CurrentLocationStatus.GEOCODING -> "住所を取得中…"

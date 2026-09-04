@@ -46,6 +46,18 @@ fun reportAddressForAccuracy(result: ReverseGeocodeResult, accuracyMeters: Doubl
         ?: result.areaText?.trim()?.takeIf(String::isNotEmpty)
 }
 
+fun addressDisplay(address: String?, facilityName: String?): String? {
+    val trimmedAddress = address?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val trimmedFacility = facilityName?.trim()?.takeIf(String::isNotEmpty) ?: return trimmedAddress
+    if (trimmedAddress == trimmedFacility) return null
+    if (!trimmedAddress.endsWith(trimmedFacility)) return trimmedAddress
+
+    val separatorIndex = trimmedAddress.length - trimmedFacility.length - 1
+    return trimmedAddress.takeIf {
+        separatorIndex >= 0 && it[separatorIndex].let { char -> char.isWhitespace() || char == '、' || char == ',' }
+    }?.substring(0, separatorIndex)?.trim()?.takeIf(String::isNotEmpty) ?: trimmedAddress
+}
+
 fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
     if (address == null) return null
     return ReverseGeocodeResult(

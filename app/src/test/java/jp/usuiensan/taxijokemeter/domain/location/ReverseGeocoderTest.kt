@@ -156,4 +156,13 @@ class ReverseGeocoderTest {
         assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 500.0))
         assertEquals("東京都平塚市土屋1038", result.canonicalAddress)
     }
+
+    @Test
+    fun addressDisplayRemovesOnlyAnIndependentTrailingFacilityName() {
+        assertEquals("千代田区千代田1", addressDisplay("千代田区千代田1 桜田門駅", "桜田門駅"))
+        assertEquals("千代田区千代田1", addressDisplay("千代田区千代田1　桜田門駅", "桜田門駅"))
+        assertEquals("千代田区千代田1", addressDisplay("千代田区千代田1", "桜田門駅"))
+        assertEquals("桜田門駅前", addressDisplay("桜田門駅前", "桜田門駅"))
+        assertNull(addressDisplay("桜田門駅", "桜田門駅"))
+    }
 }

@@ -6,6 +6,54 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AudioCuePlayerTest {
+    @Test fun fiveRapidHardDecelerationRequestsStartOnlyOneSafetyPlayback() {
+        var now = 1_000L
+        var actualStarts = 0
+        val player = AudioCuePlayer(
+            resolveResource = { 10 },
+            sink = object : StartAwareAudioCueSink {
+                override fun play(resourceId: Int, onStarted: () -> Unit, onComplete: () -> Unit) {
+                    onStarted()
+                    actualStarts++
+                }
+            },
+            nowMillis = { now },
+        )
+
+        repeat(5) {
+            player.enqueue(MeterAudioCue.HARD_DECELERATION)
+            now += 100L
+        }
+
+        assertEquals(1, actualStarts)
+    }
+
+    @Test fun safetyGlobalGuardUsesActualStartAndAllowsPlaybackAfterOneSecond() {
+        var now = 1_000L
+        var actualStarts = 0
+        val completions = ArrayDeque<() -> Unit>()
+        val player = AudioCuePlayer(
+            resolveResource = { 10 },
+            sink = object : StartAwareAudioCueSink {
+                override fun play(resourceId: Int, onStarted: () -> Unit, onComplete: () -> Unit) {
+                    onStarted()
+                    actualStarts++
+                    completions += onComplete
+                }
+            },
+            nowMillis = { now },
+        )
+
+        player.enqueue(MeterAudioCue.HARD_DECELERATION)
+        now = 1_500L
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+        now = 2_100L
+        completions.removeFirst()()
+        player.enqueue(MeterAudioCue.HARD_ACCELERATION)
+
+        assertEquals(2, actualStarts)
+    }
+
     @Test fun differentSafetyCueWithinOneSecondIsSkipped() {
         var now = 1_000L
         val played = mutableListOf<Int>()

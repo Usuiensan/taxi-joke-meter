@@ -6,6 +6,7 @@ import kotlin.math.abs
 import kotlin.math.max
 
 class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThresholds()) {
+    private data class AccelerationMeasurement(val value: Double, val previous: DrivingSample)
     private data class ActiveAcceleration(
         val type: SafetyEventType,
         val started: DrivingSample,
@@ -54,16 +55,17 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
         return delta > 0 && delta <= thresholds.maxSampleGapSeconds * 1_000.0
     }
 
-    private fun acceleration(current: DrivingSample): Double? {
+    private fun acceleration(current: DrivingSample): AccelerationMeasurement? {
         val currentTime = timeMillis(current)
         val previous = history.minByOrNull { previous -> abs((currentTime - timeMillis(previous)) / 1_000.0 - 3.0) }
             ?: return null
         val seconds = (currentTime - timeMillis(previous)) / 1_000.0
         if (seconds !in thresholds.accelerationWindowMinSeconds..thresholds.accelerationWindowMaxSeconds) return null
-        return (current.speedMps!! - previous.speedMps!!) / seconds
+        return AccelerationMeasurement((current.speedMps!! - previous.speedMps!!) / seconds, previous)
     }
 
-    private fun handleAcceleration(sample: DrivingSample, value: Double): List<SafetyEventSignal> {
+    private fun handleAcceleration(sample: DrivingSample, measurement: AccelerationMeasurement): List<SafetyEventSignal> {
+        val value = measurement.value
         val active = activeAcceleration
         if (active == null) {
             val type = when {
@@ -72,7 +74,16 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
                 else -> return emptyList()
             }
             activeAcceleration = ActiveAcceleration(type, sample, abs(value))
-            return listOf(SafetyEventSignal.Started(type, accelerationMps2 = value))
+            return listOf(SafetyEventSignal.Started(
+                type = type,
+                accelerationMps2 = value,
+                detectionId = "${type}:${sample.timestamp.toEpochMilli()}:${sample.elapsedRealtimeNanos}",
+                currentSpeedMps = sample.speedMps,
+                previousSpeedMps = measurement.previous.speedMps,
+                threshold = if (type == SafetyEventType.HARD_ACCELERATION) thresholds.hardAccelerationMps2 else thresholds.hardDecelerationMps2,
+                locationTimestampMillis = sample.timestamp.toEpochMilli(),
+                elapsedRealtimeMillis = timeMillis(sample),
+            ))
         }
 
         active.peak = max(active.peak, abs(value))
@@ -123,7 +134,15 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
         overspeedAboveSinceMillis = null
         overspeedStartedSample = null
         overspeedPeak = 0.0
-        return listOf(SafetyEventSignal.Started(SafetyEventType.OVERSPEED, speedKmh = (sample.speedMps!! * 3.6).toInt()))
+        return listOf(SafetyEventSignal.Started(
+            type = SafetyEventType.OVERSPEED,
+            speedKmh = (sample.speedMps!! * 3.6).toInt(),
+            detectionId = "${SafetyEventType.OVERSPEED}:${sample.timestamp.toEpochMilli()}:${sample.elapsedRealtimeNanos}",
+            currentSpeedMps = sample.speedMps,
+            threshold = sample.roadMode.safety.limitKmh + thresholds.overspeedStartExcessKmh,
+            locationTimestampMillis = sample.timestamp.toEpochMilli(),
+            elapsedRealtimeMillis = timeMillis(sample),
+        ))
     }
 
     private fun event(type: SafetyEventType, started: DrivingSample, ended: DrivingSample, peak: Double, roadMode: jp.usuiensan.taxijokemeter.domain.model.RoadMode) = SafetyEvent(

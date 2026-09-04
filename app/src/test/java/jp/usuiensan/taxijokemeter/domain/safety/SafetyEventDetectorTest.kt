@@ -25,7 +25,12 @@ class SafetyEventDetectorTest {
     @Test fun repeatedHardDecelerationSamplesProduceOneEvent() {
         val detector = SafetyEventDetector()
         detector.consume(sample(0, 20.0))
-        assertEquals(1, detector.consume(sample(3, 10.0)).filterIsInstance<SafetyEventSignal.Started>().size)
+        val started = detector.consume(sample(3, 10.0)).filterIsInstance<SafetyEventSignal.Started>()
+        assertEquals(1, started.size)
+        assertEquals(20.0, started.single().previousSpeedMps!!, 0.001)
+        assertEquals(10.0, started.single().currentSpeedMps!!, 0.001)
+        assertEquals(-2.94, started.single().threshold!!, 0.001)
+        assertTrue(!started.single().detectionId.isNullOrEmpty())
         assertTrue(detector.consume(sample(4, 9.0)).none { it is SafetyEventSignal.Started })
         assertTrue(detector.consume(sample(5, 8.0)).none { it is SafetyEventSignal.Started })
     }

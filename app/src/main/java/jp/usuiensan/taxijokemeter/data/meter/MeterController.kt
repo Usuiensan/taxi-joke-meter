@@ -58,7 +58,7 @@ class MeterController internal constructor(
     private val operationMutex = Mutex()
     private val measurement = DutyMeasurementController(context)
     private val reverseGeocoder = reverseGeocoder ?: AndroidReverseGeocoder(context)
-    private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context))
+    private val audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(context, cue) }, MediaPlayerAudioCueSink(context), safetyPlaybackGuard = ProcessSafetyPlaybackGuard)
     private val roadModeController = RoadModeController()
     private var sessionId: String? = null
     private var trip: Trip? = null
@@ -87,7 +87,7 @@ class MeterController internal constructor(
         if (action == MeterAction.TOTAL && !shouldFinalizePayment(before.meterState)) return
         if (action == MeterAction.EMPTY && before.meterState == MeterState.PAYMENT) return
         val after = machine.dispatch(action)
-        meterAudioCueForTransition(before.meterState, after.meterState)?.let(audioCuePlayer::enqueue)
+        meterAudioCueForTransition(before.meterState, after.meterState)?.let { audioCuePlayer.enqueue(it, "MeterController.stateTransition") }
         when (action) {
             MeterAction.DEPART -> {
                 fareRule = FareRuleStore(context).load()

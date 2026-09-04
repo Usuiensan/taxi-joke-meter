@@ -38,6 +38,12 @@ sealed interface SafetyEventSignal {
         val type: SafetyEventType,
         val accelerationMps2: Double? = null,
         val speedKmh: Int? = null,
+        val detectionId: String? = null,
+        val currentSpeedMps: Double? = null,
+        val previousSpeedMps: Double? = null,
+        val threshold: Double? = null,
+        val locationTimestampMillis: Long? = null,
+        val elapsedRealtimeMillis: Long? = null,
     ) : SafetyEventSignal
     data class Completed(val event: SafetyEvent) : SafetyEventSignal
 }

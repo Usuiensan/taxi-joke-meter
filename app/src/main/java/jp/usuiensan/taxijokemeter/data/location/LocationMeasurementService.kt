@@ -158,13 +158,17 @@ class LocationMeasurementService : Service() {
                 safetyEventDetector.consume(sample).forEach { signal ->
                     when (signal) {
                         is SafetyEventSignal.Started -> {
-                            audioCuePlayer.enqueue(signal.type.toMeterAudioCue())
+                            Log.d(TAG, "[SAFETY-DETECT] type=${signal.type} detectionId=${signal.detectionId} detectedAt=${signal.locationTimestampMillis} currentSpeedMps=${signal.currentSpeedMps} previousSpeedMps=${signal.previousSpeedMps} accelerationMps2=${signal.accelerationMps2} threshold=${signal.threshold} locationTimestamp=${signal.locationTimestampMillis} elapsedRealtime=${signal.elapsedRealtimeMillis}")
+                            audioCuePlayer.enqueue(signal.type.toMeterAudioCue(), "LocationMeasurementService.SafetyEventSignal.Started")
                             MeterRuntimeStore.showSafetyWarning(
                                 safetyWarningText(signal.type, signal.accelerationMps2, signal.speedKmh),
                                 SystemClock.elapsedRealtime(),
                             )
                         }
-                        is SafetyEventSignal.Completed -> safetyEventRepository.insert(signal.event)
+                        is SafetyEventSignal.Completed -> {
+                            Log.d(TAG, "[SAFETY-DETECT] completed type=${signal.event.type} eventId=${signal.event.id} detectedAt=${signal.event.startedAtEpochMillis} currentSpeed=unknown previousSpeed=unknown acceleration=unknown threshold=unknown locationTimestamp=${signal.event.endedAtEpochMillis} elapsedRealtime=${signal.event.startedAtElapsedRealtimeMillis}")
+                            safetyEventRepository.insert(signal.event)
+                        }
                     }
                 }
                 val count = savedSampleCount.incrementAndGet()
@@ -186,7 +190,7 @@ class LocationMeasurementService : Service() {
         database = DutyDatabase.build(this)
         repository = DrivingSampleRepository(database)
         safetyEventRepository = SafetyEventRepository(database)
-        audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(this, cue) }, MediaPlayerAudioCueSink(this))
+        audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(this, cue) }, MediaPlayerAudioCueSink(this), safetyPlaybackGuard = jp.usuiensan.taxijokemeter.data.meter.ProcessSafetyPlaybackGuard)
         mapper = LocationSampleMapper(MeasurementQualityPolicy(20.0, Duration.ofSeconds(5)))
         currentLocationGeocoder = AndroidReverseGeocoder(this)
         createNotificationChannel()

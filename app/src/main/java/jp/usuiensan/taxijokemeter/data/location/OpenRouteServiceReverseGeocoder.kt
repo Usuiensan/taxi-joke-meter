@@ -40,14 +40,20 @@ class OpenRouteServiceReverseGeocoder(
         val feature = JSONObject(body).optJSONArray("features")?.optJSONObject(0) ?: return null
         val p = feature.optJSONObject("properties") ?: return null
         val label = p.optString("label").takeIf(String::isNotBlank)
-        val road = p.optString("street").takeIf(String::isNotBlank)
-            ?: p.optString("road").takeIf(String::isNotBlank)
+        val layer = p.optString("layer").takeIf(String::isNotBlank)
+        val name = p.optString("name").takeIf(String::isNotBlank)
+        val street = p.optString("street").takeIf(String::isNotBlank)
+        val road = when (layer) {
+            "street" -> street ?: name
+            "address", "venue" -> street
+            else -> null
+        }
         val house = p.optString("housenumber").takeIf(String::isNotBlank)
         val postal = p.optString("postalcode").takeIf(String::isNotBlank)
         val municipality = p.optString("municipality").takeIf(String::isNotBlank)
         val locality = p.optString("locality").takeIf(String::isNotBlank)
         val district = p.optString("district").takeIf(String::isNotBlank)
-        val facility = p.optString("name").takeIf { it.isNotBlank() && it != road }
+        val facility = name?.takeIf { layer == "venue" && it != road }
         val address = japaneseAddress(municipality, listOfNotNull(locality, district).distinct().joinToString(""), house, null)
         return ReverseGeocodeResult(
             canonicalAddress = label ?: address,

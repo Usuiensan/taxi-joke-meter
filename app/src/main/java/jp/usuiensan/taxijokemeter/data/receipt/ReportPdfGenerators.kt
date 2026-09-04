@@ -56,8 +56,11 @@ object SafetyReportPdfGenerator {
         canvas.drawText("急加速 ${evaluation.input.weakAccelCount + evaluation.input.strongAccelCount}回（弱${evaluation.input.weakAccelCount}/強${evaluation.input.strongAccelCount}）", x + 8, 152f, paint)
         canvas.drawText("急減速 ${evaluation.input.weakBrakeCount + evaluation.input.strongBrakeCount}回（弱${evaluation.input.weakBrakeCount}/強${evaluation.input.strongBrakeCount}）", x + 8, 167f, paint)
         canvas.drawText("速度超過 ${evaluation.input.overspeedEventCount}回", x + 8, 182f, paint)
+        canvas.drawText("超過時間 ${formatSeconds(evaluation.input.overspeedSecondsByBand.values.sum())}", x + 125f, 182f, paint)
         if (evaluation.rank == jp.usuiensan.taxijokemeter.domain.safety.SafetyRank.D || evaluation.rank == jp.usuiensan.taxijokemeter.domain.safety.SafetyRank.E) canvas.drawText("指導対象です", x + 145, 137f, paint)
     }
+
+    private fun formatSeconds(seconds: Double): String { val total = seconds.toLong(); return "%02d:%02d:%02d".format(total / 3600, (total / 60) % 60, total % 60) }
 
     private fun graph(canvas: Canvas, paint: Paint, data: SafetyReportData, x: Float, y: Float, width: Float, height: Float) {
         paint.style = Paint.Style.STROKE; canvas.drawRect(x, y, x + width, y + height, paint); paint.style = Paint.Style.FILL

@@ -625,8 +625,7 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                                 runtime.meterState == MeterState.OCCUPIED && label == "割引" -> ({ controller.toggleFareAdjustment(FareAdjustmentType.DISCOUNT) })
                                 runtime.meterState == MeterState.REST && label == "解除" -> ({ controller.dispatch(MeterAction.REST_RELEASE) })
                                 runtime.meterState == MeterState.DEADHEAD && label == "解除" -> ({ controller.dispatch(MeterAction.RELEASE) })
-                                runtime.meterState == MeterState.TOTAL && label == "レシート" -> onShareReceipt
-                                runtime.meterState == MeterState.TOTAL && label == "レポート" -> onShareSafetyReport
+                                runtime.meterState == MeterState.TOTAL -> totalShareCallback(label, onShareReceipt, onShareSafetyReport)
                                 else -> null
                             },
                         )
@@ -663,6 +662,12 @@ internal fun softKeyLabels(state: MeterState) = softKeySlots(state).filterNotNul
 internal fun softKeyAction(state: MeterState, label: String) = when {
     state == MeterState.REST && label == "解除" -> MeterAction.REST_RELEASE
     state == MeterState.DEADHEAD && label == "解除" -> MeterAction.RELEASE
+    else -> null
+}
+
+internal fun totalShareCallback(label: String, onReceipt: () -> Unit, onReport: () -> Unit): (() -> Unit)? = when (label) {
+    "レシート" -> onReceipt
+    "レポート" -> onReport
     else -> null
 }
 

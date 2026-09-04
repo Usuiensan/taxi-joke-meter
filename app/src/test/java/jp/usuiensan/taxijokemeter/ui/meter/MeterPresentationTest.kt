@@ -17,6 +17,18 @@ import java.time.Instant
 
 class MeterPresentationTest {
     @Test
+    fun totalShareButtonsInvokeTheirCallbacks() {
+        var receiptCalls = 0
+        var reportCalls = 0
+
+        totalShareCallback("レシート", { receiptCalls++ }, { reportCalls++ })!!.invoke()
+        totalShareCallback("レポート", { receiptCalls++ }, { reportCalls++ })!!.invoke()
+
+        assertEquals(1, receiptCalls)
+        assertEquals(1, reportCalls)
+    }
+
+    @Test
     fun fareAmountFormatsRequiredDisplaySizes() {
         assertEquals(FareAmountParts("12", "円"), formatFareAmount(12))
         assertEquals(FareAmountParts("500", "円"), formatFareAmount(500))

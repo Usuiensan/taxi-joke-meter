@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
@@ -55,6 +56,7 @@ import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.FarePreset
 import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.model.TripStatus
 import jp.usuiensan.taxijokemeter.domain.location.LocationAccessState
 import jp.usuiensan.taxijokemeter.domain.location.locationAccessState
 import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
@@ -72,6 +74,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
+
+private const val TAG = "AppShell"
 
 @Composable
 fun AppShell() {
@@ -148,22 +152,24 @@ fun AppShell() {
 private fun shareLatest(context: Context, safety: Boolean) {
     val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main)
     scope.launch {
-        val snapshot = MeterRuntimeStore.snapshot.value
-        val session = snapshot.dutySessionId
-        val result = runCatching {
-            withContext(Dispatchers.IO) {
+        try {
+            val result = withContext(Dispatchers.IO) {
                 repeat(10) { attempt ->
-                    val intent = session?.let { sessionId ->
+                    val snapshot = MeterRuntimeStore.snapshot.value
+                    val sessionId = snapshot.dutySessionId
+                    val intent = sessionId?.let { id ->
                         val db = DutyDatabase.build(context)
                         try {
                             val artifacts = ReceiptArtifactStore(context)
                             val receipts = ReceiptRepository(db)
-                            val receipt = snapshot.currentTripId?.let { tripId -> receipts.findById(tripId) } ?: receipts.findForSession(sessionId).lastOrNull()
+                            val receipt = snapshot.currentTripId?.let { tripId -> receipts.findById(tripId) }
+                                ?.takeIf { it.status == TripStatus.COMPLETED }
+                                ?: receipts.findForSession(id).lastOrNull { it.status == TripStatus.COMPLETED }
                             receipt?.let {
                                 if (!safety) artifacts.share(artifacts.writePng(it), "image/png") else {
-                                    val samples = DrivingSampleRepository(db).findByDutySessionId(sessionId)
+                                    val samples = DrivingSampleRepository(db).findByDutySessionId(id)
                                     val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                                    artifacts.share(artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, receipts.findForSession(sessionId))), "image/png")
+                                    artifacts.share(artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, receipts.findForSession(id))), "image/png")
                                 }
                             }
                         } finally { db.close() }
@@ -173,9 +179,20 @@ private fun shareLatest(context: Context, safety: Boolean) {
                 }
                 null
             }
-        }.getOrNull()
-        result?.let { context.startActivity(Intent.createChooser(it, if (safety) "安全運転レポートを共有" else "レシートを共有")) }
-            ?: Toast.makeText(context, "共有できるレシートがありません", Toast.LENGTH_SHORT).show()
+            if (result == null) {
+                Toast.makeText(context, "共有できるレシートがありません", Toast.LENGTH_SHORT).show()
+            } else {
+                try {
+                    context.startActivity(Intent.createChooser(result, if (safety) "安全運転レポートを共有" else "レシートを共有"))
+                } catch (exception: Exception) {
+                    Log.e(TAG, "${if (safety) "レポート" else "レシート"}共有のchooser起動に失敗", exception)
+                    Toast.makeText(context, "${if (safety) "レポート" else "レシート"}共有に失敗しました", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (exception: Exception) {
+            Log.e(TAG, "${if (safety) "レポート" else "レシート"}共有に失敗", exception)
+            Toast.makeText(context, "${if (safety) "レポート" else "レシート"}共有に失敗しました", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 

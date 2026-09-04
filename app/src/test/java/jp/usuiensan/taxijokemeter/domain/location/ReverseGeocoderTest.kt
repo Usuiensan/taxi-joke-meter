@@ -91,6 +91,19 @@ class ReverseGeocoderTest {
     }
 
     @Test
+    fun emulatorChiyodaAddressKeepsTownNameFromAddressLine() {
+        val address = japaneseAddress(
+            locality = "千代田区",
+            subLocality = null,
+            subThoroughfare = "１",
+            addressLine = "日本、〒100-0001 東京都千代田区千代田１",
+            thoroughfare = null,
+        )
+
+        assertEquals("千代田区千代田1", address)
+    }
+
+    @Test
     fun reverseGeocodeWorkDoesNotBlockTheSerializedOperationQueue() = runBlocking<Unit> {
         val operationDispatcher = newSingleThreadContext("operation")
         val reverseDispatcher = newSingleThreadContext("reverse-geocode")

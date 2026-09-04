@@ -24,6 +24,7 @@ interface DutyDao {
     @Query("UPDATE duty_sessions SET endedAt = :endedAt WHERE id = :id") suspend fun updateEndedAt(id: String, endedAt: Instant)
     @Query("SELECT MAX(tripNumber) FROM trips WHERE serviceDate = :serviceDate") suspend fun maxTripNumber(serviceDate: String): Int?
     @Query("SELECT * FROM trips WHERE id = :id") suspend fun findTrip(id: String): TripEntity?
+    @Query("SELECT * FROM trips WHERE serviceDate = :serviceDate AND status IN ('COMPLETED', 'VOIDED') ORDER BY tripNumber DESC, pickupAt DESC") suspend fun findCompletedTrips(serviceDate: String): List<TripEntity>
     @Query("SELECT * FROM trip_places WHERE tripId = :tripId AND type = :type AND sequence = :sequence")
     suspend fun findTripPlace(tripId: String, type: String, sequence: Int): TripPlaceEntity?
     @Query("SELECT MAX(sequence) FROM trip_places WHERE tripId = :tripId AND type = 'WAYPOINT'")

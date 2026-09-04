@@ -20,17 +20,20 @@ class AndroidReverseGeocoder(context: Context) : ReverseGeocoder {
             val address = geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull() ?: return null
             val subLocality = address.subLocality
             val chomeMatch = Regex("(.+?)([0-9０-９]+丁目)$").matchEntire(subLocality.orEmpty())
+            val roadName = japaneseRoadName(address.thoroughfare, address.featureName)
+            val reportAddress = japaneseAddress(address.locality, address.subLocality, address.subThoroughfare, address.getAddressLine(0), address.thoroughfare.takeIf { roadName == null })
             mapReverseGeocode(
                 ReverseGeocodeAddress(
                     canonicalAddress = address.getAddressLine(0),
-                    reportAddress = japaneseAddress(address.locality, address.subLocality, address.subThoroughfare, address.getAddressLine(0)),
+                    reportAddress = reportAddress,
                     featureName = address.featureName,
                     featureDetail = null,
-                    roadName = japaneseRoadName(address.thoroughfare, address.featureName),
-                    areaText = japaneseAddress(address.locality, address.subLocality, address.subThoroughfare, address.getAddressLine(0)),
+                    roadName = roadName,
+                    areaText = reportAddress,
                     municipality = address.locality,
                     town = chomeMatch?.groupValues?.get(1) ?: subLocality,
                     chome = chomeMatch?.groupValues?.get(2),
+                    aza = address.thoroughfare.takeIf { roadName == null },
                     block = address.premises,
                     houseNumber = address.subThoroughfare,
                 ),

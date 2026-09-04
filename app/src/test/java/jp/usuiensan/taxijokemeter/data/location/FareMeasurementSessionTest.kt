@@ -4,6 +4,7 @@ import jp.usuiensan.taxijokemeter.domain.measurement.DrivingSample
 import jp.usuiensan.taxijokemeter.domain.measurement.MeasurementQuality
 import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.measurement.SpeedSource
+import jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import org.junit.Assert.assertEquals
@@ -107,6 +108,33 @@ class FareMeasurementSessionTest {
 
             assertEquals(91L, session.end()!!.chargeableDistanceMeters)
         }
+    }
+
+    @Test fun poorAccuracyCallbackUsesTimeFallbackWithoutDistance() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.OCCUPIED)
+        session.add(sample(0.001, 1, occupancyState = OccupancyState.OCCUPIED))
+
+        val result = session.add(sample(0.002, 6, MeasurementQuality.POOR_ACCURACY, speedMps = null, occupancyState = OccupancyState.OCCUPIED))
+
+        assertEquals(FareMeasurementMode.TIME_FALLBACK, result?.mode)
+        assertEquals(0L, result?.actualDistanceMeters)
+        assertEquals(0L, result?.chargeableDistanceMeters)
+        assertEquals(5L, result?.lowSpeedSeconds)
+    }
+
+    @Test fun returningToValidAfterTimeFallbackDoesNotBridgeDistance() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.OCCUPIED)
+        session.add(sample(0.001, 1, occupancyState = OccupancyState.OCCUPIED))
+        session.add(sample(0.002, 6, MeasurementQuality.POOR_ACCURACY, speedMps = null, occupancyState = OccupancyState.OCCUPIED))
+
+        val result = session.add(sample(0.003, 7, occupancyState = OccupancyState.OCCUPIED))
+
+        assertEquals(FareMeasurementMode.DISTANCE, result?.mode)
+        assertEquals(5L, result?.lowSpeedSeconds)
+        assertEquals(0L, result?.actualDistanceMeters)
+        assertEquals(0L, result?.chargeableDistanceMeters)
     }
 
     private fun sample(

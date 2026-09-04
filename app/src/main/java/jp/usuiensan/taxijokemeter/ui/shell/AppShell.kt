@@ -3,6 +3,7 @@ package jp.usuiensan.taxijokemeter.ui.shell
 import android.app.Activity
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,12 +49,20 @@ import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
+import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
+import jp.usuiensan.taxijokemeter.data.receipt.ReceiptArtifactStore
+import jp.usuiensan.taxijokemeter.data.receipt.ReceiptRepository
+import jp.usuiensan.taxijokemeter.domain.report.ReceiptData
+import jp.usuiensan.taxijokemeter.domain.report.ReceiptTextRenderer
+import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
 fun AppShell() {
     var showMeter by rememberSaveable { mutableStateOf(true) }
     var showDebug by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showReissue by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val activity = context as Activity
     val meterRuntime by MeterRuntimeStore.snapshot.collectAsState()
@@ -71,6 +81,7 @@ fun AppShell() {
         when {
             showSettings -> { showSettings = false; showMeter = true }
             showDebug -> { showDebug = false; showMeter = true }
+            showReissue -> { showReissue = false; showMeter = true }
             showMeter -> activity.finish()
             else -> showMeter = true
         }
@@ -79,9 +90,44 @@ fun AppShell() {
         when {
             showSettings -> FareRuleSettingsScreen(padding) { showSettings = false; showMeter = true }
             showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, openFareSettings)
-            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false })
+            showReissue -> ReissueScreen(padding) { showReissue = false; showMeter = true }
+            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false }, { showReissue = true; showMeter = false })
             else -> MeterScreen(padding, meterRuntime, meterController)
         }
+    }
+}
+
+@Composable
+private fun ReissueScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, onBack: () -> Unit) {
+    val context = LocalContext.current
+    var date by remember { mutableStateOf(LocalDate.now(ZoneId.of("Asia/Tokyo"))) }
+    var receipts by remember { mutableStateOf<List<ReceiptData>>(emptyList()) }
+    var selected by remember { mutableStateOf<ReceiptData?>(null) }
+    val artifacts = remember { ReceiptArtifactStore(context) }
+    LaunchedEffect(date) {
+        val db = DutyDatabase.build(context)
+        try { receipts = ReceiptRepository(db).findForServiceDate(date.toString()); selected = null } finally { db.close() }
+    }
+    Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { date = date.minusDays(1) }) { Text("前日") }
+            Text(date.toString(), modifier = Modifier.padding(12.dp))
+            Button(onClick = { date = date.plusDays(1) }) { Text("翌日") }
+        }
+        receipts.forEach { receipt ->
+            Button(onClick = { selected = receipt }, modifier = Modifier.fillMaxWidth()) {
+                Text("No.${receipt.tripNumber ?: "-"}  ${receipt.pickupAt.toString().substring(11, 16)} → ${receipt.dropoffAt?.toString()?.substring(11, 16) ?: "取消"}  ${receipt.totalFareYen}円")
+            }
+        }
+        selected?.let { receipt ->
+            Text(ReceiptTextRenderer.render(receipt))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { val file = artifacts.writeText(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "text/plain"), "TXT共有")) }) { Text("TXT共有") }
+                Button(onClick = { context.startActivity(artifacts.view(artifacts.writePng(receipt))) }) { Text("PNG表示") }
+                Button(onClick = { val file = artifacts.writePng(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "image/png"), "PNG共有")) }) { Text("PNG共有") }
+            }
+        }
+        Button(onClick = onBack) { Text("戻る") }
     }
 }
 
@@ -137,6 +183,8 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
     var lowSpeedSeconds by remember(current) { mutableStateOf(current.lowSpeedTimeIncrementSeconds.toString()) }
     var pickupFee by remember(chargeSettings) { mutableStateOf(chargeSettings.pickupFeeYen.toString()) }
     var reservationFee by remember(chargeSettings) { mutableStateOf(chargeSettings.reservationFeeYen.toString()) }
+    var surchargePercent by remember(chargeSettings) { mutableStateOf(chargeSettings.surchargePercent.toString()) }
+    var discountPercent by remember(chargeSettings) { mutableStateOf(chargeSettings.discountPercent.toString()) }
     var error by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("運賃設定")
@@ -160,12 +208,14 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
         FareRuleField("低速時間加算 (秒)", lowSpeedSeconds) { lowSpeedSeconds = it }
         FareRuleField("迎車料金 (円)", pickupFee) { pickupFee = it }
         FareRuleField("予約料金 (円)", reservationFee) { reservationFee = it }
+        FareRuleField("割増率 (%)", surchargePercent) { surchargePercent = it }
+        FareRuleField("割引率 (%)", discountPercent) { discountPercent = it }
         error?.let { Text(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onBack) { Text("戻る") }
             Button(onClick = {
                 try {
-                    saveFareSettings(context, initialDistance, initialFare, distanceIncrement, incrementFare, lowSpeedLimit, lowSpeedSeconds, pickupFee, reservationFee)
+                    saveFareSettings(context, initialDistance, initialFare, distanceIncrement, incrementFare, lowSpeedLimit, lowSpeedSeconds, pickupFee, reservationFee, surchargePercent, discountPercent)
                     error = null
                     onBack()
                 } catch (_: NumberFormatException) {
@@ -188,9 +238,11 @@ internal fun saveFareSettings(
     lowSpeedSeconds: String,
     pickupFee: String,
     reservationFee: String,
+    surchargePercent: String = "0",
+    discountPercent: String = "0",
 ) {
     val rule = FareRule(initialDistance.toLong(), initialFare.toLong(), distanceIncrement.toLong(), incrementFare.toLong(), lowSpeedLimit.toInt(), lowSpeedSeconds.toInt())
-    val charges = TripChargeSettings(pickupFee.toLong(), reservationFee.toLong())
+    val charges = TripChargeSettings(pickupFee.toLong(), reservationFee.toLong(), surchargePercent.toInt(), discountPercent.toInt())
     FareRuleStore(context).save(rule)
     TripChargeSettingsStore(context).save(charges)
 }

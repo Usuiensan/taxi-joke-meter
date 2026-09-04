@@ -77,19 +77,20 @@ fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
     )
 }
 
-fun japaneseAddress(locality: String?, subLocality: String?, subThoroughfare: String?, addressLine: String?): String? {
-    val parts = listOf(locality, subLocality, subThoroughfare)
+fun japaneseAddress(locality: String?, subLocality: String?, subThoroughfare: String?, addressLine: String?, thoroughfare: String? = null): String? {
+    val parts = listOf(locality, subLocality, thoroughfare, subThoroughfare)
         .mapNotNull { it?.trim()?.takeIf(::isJapaneseAddressPart) }
         .distinct()
     val fields = parts.joinToString("")
     val line = addressLine?.let(::cleanJapaneseAddressLine)
-    return (line?.takeIf { looksLikeAddress(it) && it.length >= fields.length } ?: fields.takeIf { it.isNotEmpty() } ?: line)
+    val lineContainsFields = line != null && parts.count { it in line } >= 2
+    return (line?.takeIf { (looksLikeAddress(it) || lineContainsFields) && it.length >= fields.length } ?: fields.takeIf { it.isNotEmpty() } ?: line)
         ?.takeIf(String::isNotEmpty)
 }
 
 fun japaneseRoadName(thoroughfare: String?, featureName: String?): String? =
     listOf(thoroughfare, featureName).firstOrNull { value ->
-        value?.trim()?.let { isJapaneseDisplayText(it) && (it == thoroughfare || it.contains("道") || it.contains("国道") || it.contains("県道") || it.contains("府道")) } == true
+        value?.trim()?.let { isJapaneseDisplayText(it) && (it.contains("通り") || it.contains("街道") || it.contains("国道") || it.contains("県道") || it.contains("府道") || it.contains("環七")) } == true
     }?.trim()
 
 private fun isJapaneseDisplayText(value: String): Boolean = value.any { it in '\u3040'..'\u30ff' || it in '\u3400'..'\u9fff' }

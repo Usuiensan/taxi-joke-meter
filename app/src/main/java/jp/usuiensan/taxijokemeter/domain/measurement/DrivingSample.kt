@@ -31,6 +31,12 @@ data class DrivingSample(
             measurementQuality != MeasurementQuality.STALE &&
             latitude.isFinite() && longitude.isFinite() &&
             latitude in -90.0..90.0 && longitude in -180.0..180.0
+
+    val isFareContinuable: Boolean
+        get() = isValid || (measurementQuality == MeasurementQuality.POOR_ACCURACY && isDisplayValid)
+
+    val isTimeFallback: Boolean
+        get() = measurementQuality == MeasurementQuality.POOR_ACCURACY && isDisplayValid
 }
 
 val RoadMode.safetyLimitKmh: Int

@@ -59,6 +59,8 @@ class ReverseGeocoderTest {
         assertEquals("国道1号", japaneseRoadName(null, "国道1号"))
         assertEquals("内堀通り", japaneseRoadName("内堀通り", "皇居"))
         assertNull(japaneseRoadName(null, "千代田区"))
+        assertNull(japaneseRoadName("正道", null))
+        assertEquals("城陽市寺田正道", japaneseAddress("城陽市", "寺田", null, "京都府城陽市寺田正道", "正道"))
     }
 
     @Test

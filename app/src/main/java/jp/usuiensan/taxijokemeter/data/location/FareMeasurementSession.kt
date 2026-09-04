@@ -25,7 +25,7 @@ class FareMeasurementSession(fareRule: FareRule) {
     }
 
     fun add(current: DrivingSample): MeasurementAccumulation? {
-        if (!current.isValid) {
+        if (!current.isFareContinuable) {
             anchor = null
             return null
         }

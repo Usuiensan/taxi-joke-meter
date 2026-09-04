@@ -135,9 +135,11 @@ class LocationMeasurementService : Service() {
                 meteredFareYen = accumulation?.let { FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds) } ?: current.meteredFareYen,
                 fareYen = accumulation?.let { totalFareYen(FareCalculator.calculate(fareRule, it.chargeableDistanceMeters, it.lowSpeedSeconds), current.fareAdjustmentType, current.fareAdjustmentPercent, current.fareChargesYen) } ?: current.fareYen,
                 restDistanceMeters = restDistance?.toLong() ?: current.restDistanceMeters,
-                chargeProgress = if (sample.isValid) {
+                chargeProgress = if (sample.isFareContinuable) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
-                    val mode = sample.speedMps?.let { speed ->
+                    val mode = accumulation?.mode?.let { fareMode ->
+                        if (fareMode == jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode.TIME || fareMode == jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode.TIME_FALLBACK) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
+                    } ?: sample.speedMps?.let { speed ->
                         if (speed * 3.6 < fareRule.lowSpeedLimitKmh) ChargeProgressMode.TIME else ChargeProgressMode.DISTANCE
                     } ?: current.chargeProgress?.mode ?: ChargeProgressMode.DISTANCE
                     jp.usuiensan.taxijokemeter.data.meter.ChargeProgressUiState(mode, ChargeProgressMapper.fraction(fareRule, values.chargeableDistanceMeters, values.lowSpeedSeconds))

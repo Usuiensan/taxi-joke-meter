@@ -13,7 +13,10 @@ data class MeasurementAccumulation(
     val chargeableDistanceMeters: Long,
     val lowSpeedSeconds: Long,
     val actualDistanceMeters: Long = 0,
+    val mode: FareMeasurementMode = FareMeasurementMode.DISTANCE,
 )
+
+enum class FareMeasurementMode { DISTANCE, TIME, TIME_FALLBACK, UNAVAILABLE }
 
 class TripMeasurementAccumulator(private val fareRule: FareRule) {
     private var distanceMeters = 0.0
@@ -21,7 +24,14 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
     private var lowSpeedDuration = Duration.ZERO
 
     fun add(previous: DrivingSample, current: DrivingSample, distanceOnly: Boolean = false): MeasurementAccumulation {
-        if (previous.isValid && current.isValid) {
+        val mode = when {
+            !previous.isFareContinuable || !current.isFareContinuable -> FareMeasurementMode.UNAVAILABLE
+            current.isTimeFallback && !distanceOnly -> {
+                elapsedBetween(previous, current)?.let { if (!it.isZero) lowSpeedDuration = lowSpeedDuration.plus(it) }
+                FareMeasurementMode.TIME_FALLBACK
+            }
+            previous.isTimeFallback -> FareMeasurementMode.DISTANCE
+            previous.isValid && current.isValid -> {
             val elapsed = elapsedBetween(previous, current)
             val distance = segmentDistanceMeters(previous, current)
             val speedMps = current.speedMps ?: monotonicElapsed(previous, current)
@@ -37,8 +47,11 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
             } else if (elapsed != null && !elapsed.isZero && speedMps != null) {
                 distanceMeters += distance
             }
+                if (current.speedMps != null && current.speedMps * 3.6 < fareRule.lowSpeedLimitKmh) FareMeasurementMode.TIME else FareMeasurementMode.DISTANCE
+            }
+            else -> FareMeasurementMode.UNAVAILABLE
         }
-        return MeasurementAccumulation(distanceMeters.roundToLong(), lowSpeedDuration.seconds, actualDistanceMeters.roundToLong())
+        return MeasurementAccumulation(distanceMeters.roundToLong(), lowSpeedDuration.seconds, actualDistanceMeters.roundToLong(), mode)
     }
 
     private fun elapsedBetween(previous: DrivingSample, current: DrivingSample): Duration? {

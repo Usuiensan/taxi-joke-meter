@@ -29,6 +29,9 @@ import jp.usuiensan.taxijokemeter.domain.model.SafetyRoadModeChange
 import jp.usuiensan.taxijokemeter.domain.model.Trip
 import jp.usuiensan.taxijokemeter.domain.model.TripStatus
 import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentType
+import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentSelection
+import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentRates
+import jp.usuiensan.taxijokemeter.domain.model.toggleFareAdjustment
 import jp.usuiensan.taxijokemeter.domain.model.totalFareYen
 import jp.usuiensan.taxijokemeter.domain.road.RoadModeController
 import kotlinx.coroutines.CoroutineScope
@@ -214,11 +217,21 @@ class MeterController internal constructor(
         }
     }
 
-    fun setFareAdjustment(type: FareAdjustmentType, percent: Int) {
+    fun toggleFareAdjustment(type: FareAdjustmentType) {
         if (MeterRuntimeStore.snapshot.value.meterState != MeterState.OCCUPIED) return
-        require(percent in 0..999)
-        val actualType = if (percent == 0) FareAdjustmentType.NONE else type
-        MeterRuntimeStore.update { it.copy(fareAdjustmentType = actualType, fareAdjustmentPercent = if (actualType == FareAdjustmentType.NONE) 0 else percent, fareYen = totalFareYen(it.meteredFareYen, actualType, percent, it.fareChargesYen)) }
+        val settings = TripChargeSettingsStore(context).load()
+        val current = MeterRuntimeStore.snapshot.value
+        val selection = toggleFareAdjustment(
+            FareAdjustmentSelection(current.fareAdjustmentType, current.fareAdjustmentPercent),
+            type,
+            FareAdjustmentRates(settings.surchargePercent, settings.discountPercent),
+        )
+        MeterRuntimeStore.update { it.copy(fareAdjustmentType = selection.type, fareAdjustmentPercent = selection.percent, fareYen = totalFareYen(it.meteredFareYen, selection.type, selection.percent, it.fareChargesYen)) }
+        enqueue {
+            val tripId = activeTripId() ?: return@enqueue
+            val db = database()
+            try { db.dutyDao().updateTripAdjustment(tripId, selection.type.name, selection.percent) } finally { db.close() }
+        }
     }
 
     private fun startTrip(before: MeterState, after: jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState) {

@@ -4,6 +4,15 @@ import java.math.BigInteger
 
 enum class FareAdjustmentType { NONE, SURCHARGE, DISCOUNT }
 
+data class FareAdjustmentRates(val surchargePercent: Int = 0, val discountPercent: Int = 0) {
+    init { require(surchargePercent in 0..999 && discountPercent in 0..999) }
+}
+
+data class FareAdjustmentSelection(val type: FareAdjustmentType = FareAdjustmentType.NONE, val percent: Int = 0)
+
+fun toggleFareAdjustment(current: FareAdjustmentSelection, requested: FareAdjustmentType, rates: FareAdjustmentRates): FareAdjustmentSelection =
+    if (current.type == requested) FareAdjustmentSelection() else FareAdjustmentSelection(requested, if (requested == FareAdjustmentType.SURCHARGE) rates.surchargePercent else rates.discountPercent)
+
 fun adjustedMeteredFareYen(meteredFareYen: Long, type: FareAdjustmentType, percent: Int): Long {
     require(meteredFareYen >= 0)
     require(percent in 0..999)

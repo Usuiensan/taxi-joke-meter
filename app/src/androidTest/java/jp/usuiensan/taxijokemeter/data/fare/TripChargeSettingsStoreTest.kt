@@ -19,7 +19,7 @@ class TripChargeSettingsStoreTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "trip_charge_settings_test"
         context.deleteSharedPreferences(name)
-        val settings = TripChargeSettings(pickupFeeYen = 500, reservationFeeYen = 300)
+        val settings = TripChargeSettings(pickupFeeYen = 500, reservationFeeYen = 300, surchargePercent = 30, discountPercent = 20)
 
         TripChargeSettingsStore(context, name).save(settings)
 

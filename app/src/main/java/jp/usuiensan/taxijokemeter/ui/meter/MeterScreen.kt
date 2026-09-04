@@ -84,7 +84,7 @@ private val MeterFontFamily = FontFamily(
 )
 
 @Composable
-fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}, onOpenDebug: () -> Unit = {}) {
+fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}, onOpenDebug: () -> Unit = {}, onOpenReissue: () -> Unit = {}) {
     CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = MeterFontFamily)) {
         Box(
             modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
@@ -100,7 +100,7 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
                         scaleY = scale
                     },
                 ) {
-                    LandscapeMeterLayout(runtime, controller, onOpenFareSettings, onOpenDebug)
+                    LandscapeMeterLayout(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue)
                 }
             }
         }
@@ -108,14 +108,13 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
 }
 
 @Composable
-private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
-    MeterReferenceLayout(runtime, controller, onOpenFareSettings, onOpenDebug)
+private fun LandscapeMeterLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit) {
+    MeterReferenceLayout(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue)
 }
 
 @Composable
-private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit) {
+private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit) {
     var passengerControlsVisible by remember { mutableStateOf(false) }
-    var adjustmentType by remember { mutableStateOf<FareAdjustmentType?>(null) }
     Row(
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -129,8 +128,8 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
             if (showsDateTime(runtime.meterState, false)) {
                 MeterDateHeader()
             }
-            BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller, passengerControlsVisible, adjustmentType) { type, percent -> controller.setFareAdjustment(type, percent); adjustmentType = null }
-            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug, { adjustmentType = it }) { passengerControlsVisible = !passengerControlsVisible }
+            BalancePanel(Modifier.weight(1f).fillMaxWidth(), runtime, controller, passengerControlsVisible)
+            BottomControls(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue) { passengerControlsVisible = !passengerControlsVisible }
         }
 
         Column(modifier = Modifier.width(92.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -162,7 +161,7 @@ private fun MeterReferenceLayout(runtime: MeterRuntimeSnapshot, controller: Mete
 }
 
 @Composable
-private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController, passengerControlsVisible: Boolean, adjustmentType: FareAdjustmentType?, onAdjustment: (FareAdjustmentType, Int) -> Unit) {
+private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, controller: MeterController, passengerControlsVisible: Boolean) {
     Box(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.TopStart,
@@ -247,7 +246,6 @@ private fun BalancePanel(modifier: Modifier, runtime: MeterRuntimeSnapshot, cont
                     }
                 }
             }
-            if (adjustmentType != null) AdjustmentKeypad(adjustmentType, runtime.fareAdjustmentPercent, onAdjustment)
             if (showsChargeProgressRail(runtime.meterState)) {
                 Spacer(Modifier.height(6.dp).fillMaxWidth().background(MeterWhite))
             }
@@ -523,7 +521,7 @@ internal fun formatRestDuration(startedAt: Instant?, now: Instant): String {
 }
 
 @Composable
-private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenAdjustment: (FareAdjustmentType) -> Unit, onTogglePassengerControls: () -> Unit) {
+private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit, onOpenDebug: () -> Unit, onOpenReissue: () -> Unit, onTogglePassengerControls: () -> Unit) {
     val rows = if (runtime.meterState == MeterState.EMPTY) emptyMenuRows() else listOf(softKeySlots(runtime.meterState, runtime.menu == MeterMenu.EMPTY_MENU))
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEach { row ->
@@ -534,8 +532,13 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                     if (label == null) {
                         Spacer(slotModifier)
                     } else {
+                        val adjustmentOn = (label == "割増" && runtime.fareAdjustmentType == FareAdjustmentType.SURCHARGE) || (label == "割引" && runtime.fareAdjustmentType == FareAdjustmentType.DISCOUNT)
                         MeterButton(
-                            if (runtime.meterState == MeterState.EMPTY && label == "予約") reservationLabel(runtime.pendingReservation) else label,
+                            when {
+                                runtime.meterState == MeterState.EMPTY && label == "予約" -> reservationLabel(runtime.pendingReservation)
+                                adjustmentOn -> "$label ✓"
+                                else -> label
+                            },
                             if (index == 0) Color(0xFFB6D744) else if (index == 1) Color(0xFF1AA4D1) else MeterWhite,
                             slotModifier,
                             if (index < 2) Color(0xFF16200C) else Color(0xFF1C2023),
@@ -545,40 +548,19 @@ private fun BottomControls(runtime: MeterRuntimeSnapshot, controller: MeterContr
                                 runtime.meterState == MeterState.EMPTY && label == "予約" -> ({ controller.toggleReservation() })
                                 runtime.meterState == MeterState.EMPTY && label == "回送" -> ({ controller.dispatch(MeterAction.DEADHEAD) })
                                 runtime.meterState == MeterState.EMPTY && label == "デバッグ" -> ({ controller.dispatch(MeterAction.BACK); onOpenDebug() })
+                                runtime.meterState == MeterState.EMPTY && label == "再発行" -> onOpenReissue
                                 runtime.meterState == MeterState.EMPTY && label == "運賃制" -> onOpenFareSettings
                                 runtime.meterState == MeterState.OCCUPIED && label == "人員" -> onTogglePassengerControls
                                 runtime.meterState == MeterState.OCCUPIED && label == "経由地" -> ({ controller.addWaypoint() })
                                 runtime.meterState == MeterState.OCCUPIED && label == "迎車" -> ({ controller.togglePickupFee() })
-                                runtime.meterState == MeterState.OCCUPIED && label == "割増" -> ({ onOpenAdjustment(FareAdjustmentType.SURCHARGE) })
-                                runtime.meterState == MeterState.OCCUPIED && label == "割引" -> ({ onOpenAdjustment(FareAdjustmentType.DISCOUNT) })
+                                runtime.meterState == MeterState.OCCUPIED && label == "割増" -> ({ controller.toggleFareAdjustment(FareAdjustmentType.SURCHARGE) })
+                                runtime.meterState == MeterState.OCCUPIED && label == "割引" -> ({ controller.toggleFareAdjustment(FareAdjustmentType.DISCOUNT) })
                                 runtime.meterState == MeterState.REST && label == "解除" -> ({ controller.dispatch(MeterAction.REST_RELEASE) })
                                 runtime.meterState == MeterState.DEADHEAD && label == "解除" -> ({ controller.dispatch(MeterAction.RELEASE) })
                                 else -> null
                             },
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AdjustmentKeypad(type: FareAdjustmentType, currentPercent: Int, onApply: (FareAdjustmentType, Int) -> Unit) {
-    var digits by remember(type, currentPercent) { mutableStateOf(if (currentPercent == 0) "" else currentPercent.toString()) }
-    Column(Modifier.fillMaxWidth().background(Color(0xFF263238)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(if (type == FareAdjustmentType.SURCHARGE) "割増率 %" else "割引率 %", color = MeterWhite, fontSize = 26.sp)
-        Text(if (digits.isEmpty()) "0" else digits, color = MeterWhite, fontSize = 42.sp, fontWeight = FontWeight.Bold)
-        listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("0", "消去", "決定")).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                row.forEach { key ->
-                    MeterButton(key, Color(0xFF087FA5), Modifier.weight(1f).height(52.dp), size = 26.sp, onClick = {
-                        when (key) {
-                            "消去" -> digits = ""
-                            "決定" -> onApply(type, digits.toIntOrNull() ?: 0)
-                            else -> if (digits.length < 3) digits += key
-                        }
-                    })
                 }
             }
         }

@@ -29,7 +29,7 @@ class SafetyEventDetectorTest {
         assertEquals(1, started.size)
         assertEquals(20.0, started.single().previousSpeedMps!!, 0.001)
         assertEquals(10.0, started.single().currentSpeedMps!!, 0.001)
-        assertEquals(-2.94, started.single().threshold!!, 0.001)
+        assertEquals(-3.0, started.single().threshold!!, 0.001)
         assertTrue(!started.single().detectionId.isNullOrEmpty())
         assertTrue(detector.consume(sample(4, 9.0)).none { it is SafetyEventSignal.Started })
         assertTrue(detector.consume(sample(5, 8.0)).none { it is SafetyEventSignal.Started })

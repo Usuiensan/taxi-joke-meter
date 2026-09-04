@@ -6,8 +6,8 @@ enum class SafetyEventType { OVERSPEED, HARD_ACCELERATION, HARD_DECELERATION }
 enum class SafetyEventSource { GPS }
 
 data class SafetyThresholds(
-    val hardAccelerationMps2: Double = 2.45,
-    val hardDecelerationMps2: Double = -2.94,
+    val hardAccelerationMps2: Double = 2.5,
+    val hardDecelerationMps2: Double = -3.0,
     val accelerationReleaseMps2: Double = 1.47,
     val decelerationReleaseMps2: Double = -1.47,
     val accelerationWindowMinSeconds: Double = 2.5,

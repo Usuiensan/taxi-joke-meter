@@ -41,20 +41,9 @@ data class ReverseGeocodeResult(
 )
 
 fun reportAddressForAccuracy(result: ReverseGeocodeResult, accuracyMeters: Double): String? {
-    val municipality = result.municipality?.trim()?.takeIf(String::isNotEmpty)
-    val town = result.town?.trim()?.takeIf(String::isNotEmpty)
-    val chome = result.chome?.trim()?.takeIf(String::isNotEmpty)
-    val aza = result.aza?.trim()?.takeIf(String::isNotEmpty)
-    val precise = result.reportAddress?.trim()?.takeIf(String::isNotEmpty)
-        ?: listOf(municipality, town, chome, aza, result.block, result.houseNumber)
-            .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }.distinct().joinToString("").takeIf(String::isNotEmpty)
-    if (!accuracyMeters.isFinite() || accuracyMeters <= PRECISE_MAX_METERS) return precise
-    val area = when {
-        accuracyMeters <= BLOCK_MAX_METERS -> listOf(municipality, town, chome, aza)
-        accuracyMeters <= TOWN_MAX_METERS -> listOf(municipality, town, aza)
-        else -> listOf(municipality, town, aza)
-    }.mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }.distinct().joinToString("")
-    return area.takeIf(String::isNotEmpty) ?: result.areaText ?: precise
+    return result.reportAddress?.trim()?.takeIf(String::isNotEmpty)
+        ?: result.canonicalAddress?.trim()?.takeIf(String::isNotEmpty)
+        ?: result.areaText?.trim()?.takeIf(String::isNotEmpty)
 }
 
 fun mapReverseGeocode(address: ReverseGeocodeAddress?): ReverseGeocodeResult? {
@@ -106,6 +95,14 @@ private fun cleanJapaneseAddressLine(value: String): String? {
         .replace(Regex("^(日本[、,\\s]*)"), "")
         .replace(Regex("^(北海道|東京都|京都府|大阪府|.{2,3}県)"), "")
         .replace(Regex("[、,]"), "")
+        .map { char ->
+            when (char) {
+                in '０'..'９' -> ('0'.code + (char.code - '０'.code)).toChar()
+                '\u2212', '\u2010', '\u2011', '\u2012', '\u2013', '\u2014', '\uFF0D' -> '-'
+                else -> char
+            }
+        }
+        .joinToString("")
         .trim()
         .takeIf { it.isNotEmpty() }
 }

@@ -64,6 +64,33 @@ class ReverseGeocoderTest {
     }
 
     @Test
+    fun geocoderAddressLineRemainsCompleteAtEveryAccuracy() {
+        val address = japaneseAddress(
+            locality = "城陽市",
+            subLocality = null,
+            subThoroughfare = null,
+            addressLine = "日本、〒610-0121 京都府城陽市寺田正道５４−１０",
+            thoroughfare = "正道",
+        )
+        val result = mapReverseGeocode(
+            ReverseGeocodeAddress(
+                canonicalAddress = address,
+                reportAddress = address,
+                featureName = "５４−１０",
+                featureDetail = null,
+                municipality = "城陽市",
+                aza = "正道",
+            ),
+        )!!
+
+        assertEquals("城陽市寺田正道54-10", result.canonicalAddress)
+        listOf(23.0, 30.0, 30.1, 70.0, 100.0, 100.1, 180.0, 300.0, 300.1, 500.0).forEach { accuracy ->
+            assertEquals("城陽市寺田正道54-10", reportAddressForAccuracy(result, accuracy))
+        }
+        assertNull(japaneseRoadName("正道", null))
+    }
+
+    @Test
     fun reverseGeocodeWorkDoesNotBlockTheSerializedOperationQueue() = runBlocking<Unit> {
         val operationDispatcher = newSingleThreadContext("operation")
         val reverseDispatcher = newSingleThreadContext("reverse-geocode")
@@ -95,7 +122,7 @@ class ReverseGeocoderTest {
     }
 
     @Test
-    fun reportAddressGetsCoarserWithoutChangingCanonicalAddress() {
+    fun reportAddressDoesNotChangeWithAccuracy() {
         val result = ReverseGeocodeResult(
             canonicalAddress = "東京都平塚市土屋1038",
             reportAddress = "平塚市土屋1丁目1038",
@@ -111,9 +138,9 @@ class ReverseGeocoderTest {
         )
 
         assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 15.0))
-        assertEquals("平塚市土屋1丁目", reportAddressForAccuracy(result, 60.0))
-        assertEquals("平塚市土屋", reportAddressForAccuracy(result, 180.0))
-        assertEquals("平塚市土屋", reportAddressForAccuracy(result, 500.0))
+        assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 60.0))
+        assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 180.0))
+        assertEquals("平塚市土屋1丁目1038", reportAddressForAccuracy(result, 500.0))
         assertEquals("東京都平塚市土屋1038", result.canonicalAddress)
     }
 }

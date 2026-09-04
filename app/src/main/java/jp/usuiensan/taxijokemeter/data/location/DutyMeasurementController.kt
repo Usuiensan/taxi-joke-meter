@@ -8,6 +8,8 @@ import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.model.DutySession
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
+import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
+import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,12 +26,29 @@ class DutyMeasurementController(private val context: Context) {
     @Synchronized
     fun ensureMeasurementRunning(fareRule: FareRule): String? {
         sessionId = resolveMeasurementSessionId(sessionId, MeasurementDebugStore.snapshot.value)
-        if (sessionId != null) return sessionId
+        if (sessionId != null && MeasurementDebugStore.snapshot.value.running) return sessionId
         startRequested = true
-        sessionId = UUID.randomUUID().toString()
+        sessionId = sessionId ?: UUID.randomUUID().toString()
         MeasurementDebugStore.update { it.copy(sessionId = sessionId) }
-        start(RoadMode.GENERAL, OccupancyState.EMPTY, fareRule, sessionId!!)
+        val meterState = MeterRuntimeStore.snapshot.value.meterState
+        val occupancy = when (meterState) {
+            MeterState.OCCUPIED -> OccupancyState.OCCUPIED
+            MeterState.PICKUP -> OccupancyState.PICKUP
+            MeterState.REST -> OccupancyState.REST
+            MeterState.DEADHEAD -> OccupancyState.DEADHEAD
+            else -> OccupancyState.EMPTY
+        }
+        start(MeterRuntimeStore.snapshot.value.roadMode, occupancy, fareRule, sessionId!!)
         return sessionId
+    }
+
+    fun resumeLocation(fareRule: FareRule) {
+        if (!hasLocationPermission(context)) return
+        if (MeasurementDebugStore.snapshot.value.running) {
+            context.startService(Intent(context, LocationMeasurementService::class.java).setAction(LocationMeasurementService.ACTION_RESTART_LOCATION))
+        } else {
+            ensureMeasurementRunning(fareRule)
+        }
     }
 
     fun start(roadMode: RoadMode, occupancyState: OccupancyState, fareRule: FareRule, sessionId: String = UUID.randomUUID().toString()): String {
@@ -37,7 +56,7 @@ class DutyMeasurementController(private val context: Context) {
         MeasurementDebugStore.update { it.copy(sessionId = sessionId) }
         val database = DutyDatabase.build(context)
         scope.launch {
-            DutyRecordRepository(database).save(DutySession(sessionId, Instant.now(), null))
+            if (database.dutyDao().findSession(sessionId) == null) DutyRecordRepository(database).save(DutySession(sessionId, Instant.now(), null))
             database.close()
             withContext(Dispatchers.Main) { context.startForegroundService(Intent(context, LocationMeasurementService::class.java).apply {
             action = LocationMeasurementService.ACTION_START

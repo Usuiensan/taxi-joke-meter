@@ -214,25 +214,21 @@ class LocationMeasurementService : Service() {
             hasValidGpsFix = false
             MeterRuntimeStore.update { it.copy(currentLocation = CurrentLocationDisplayState(status = CurrentLocationStatus.GPS_LOADING)) }
             MeasurementDebugStore.update(MeasurementDebugSnapshot(running = true, sessionId = runtimeState.sampleState.dutySessionId, roadMode = runtimeState.sampleState.roadMode.name))
-            MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, meterState = jp.usuiensan.taxijokemeter.domain.meter.MeterState.EMPTY, menu = jp.usuiensan.taxijokemeter.domain.meter.MeterMenu.EMPTY_MENU, roadMode = runtimeState.sampleState.roadMode) }
+            MeterRuntimeStore.update { it.copy(dutyLifecycle = jp.usuiensan.taxijokemeter.domain.meter.DutyLifecycle.ACTIVE, roadMode = runtimeState.sampleState.roadMode) }
             if (!hasLocationPermission(this)) {
                 Log.w(TAG, "GPS状態=権限なし")
+                MeasurementDebugStore.update { it.copy(running = false) }
                 stopSelf()
                 return START_NOT_STICKY
             }
             startForegroundCompat()
-            val fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val providers = buildList {
-                if (fine && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
-                if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
-            }
-            providers.forEach { provider ->
-                locationManager.requestLocationUpdates(provider, 500L, 0f, listener, Looper.getMainLooper())
-                Log.i(TAG, "Location provider started provider=$provider permissionFine=$fine")
-            }
-            if (providers.isEmpty()) Log.w(TAG, "Location provider unavailable")
+            registerLocationProviders()
             healthHandler.post(healthWatchdog)
             Log.i(TAG, "GPS状態=計測開始 sessionId=${runtimeState.sampleState.dutySessionId}")
+        } else if (action == ACTION_RESTART_LOCATION) {
+            if (!MeasurementDebugStore.snapshot.value.running || !hasLocationPermission(this)) return START_NOT_STICKY
+            registerLocationProviders()
+            Log.i(TAG, "GPS状態=provider再開 sessionId=${runtimeState.sampleState.dutySessionId}")
         } else if (action == ACTION_UPDATE_STATE) {
             if (!MeasurementDebugStore.snapshot.value.running) return START_NOT_STICKY
             runtimeState = runtimeState.updateState(
@@ -337,6 +333,23 @@ class LocationMeasurementService : Service() {
         else startForeground(NOTIFICATION_ID, notification)
     }
 
+    private fun registerLocationProviders() {
+        if (!locationManager.isLocationEnabled) {
+            Log.w(TAG, "GPS状態=端末位置情報OFF")
+            return
+        }
+        val fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val providers = buildList {
+            if (fine && locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
+        }
+        providers.forEach { provider ->
+            locationManager.requestLocationUpdates(provider, 500L, 0f, listener, Looper.getMainLooper())
+            Log.i(TAG, "Location provider started provider=$provider permissionFine=$fine")
+        }
+        if (providers.isEmpty()) Log.w(TAG, "Location provider unavailable")
+    }
+
     private fun createNotificationChannel() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "乗務計測", NotificationManager.IMPORTANCE_LOW),
@@ -360,6 +373,7 @@ class LocationMeasurementService : Service() {
 
     companion object {
         const val ACTION_START = "jp.usuiensan.taxijokemeter.action.START_MEASUREMENT"
+        const val ACTION_RESTART_LOCATION = "jp.usuiensan.taxijokemeter.action.RESTART_LOCATION"
         const val ACTION_UPDATE_STATE = "jp.usuiensan.taxijokemeter.action.UPDATE_MEASUREMENT_STATE"
         const val ACTION_BEGIN_FARE = "jp.usuiensan.taxijokemeter.action.BEGIN_FARE_MEASUREMENT"
         const val ACTION_END_FARE = "jp.usuiensan.taxijokemeter.action.END_FARE_MEASUREMENT"

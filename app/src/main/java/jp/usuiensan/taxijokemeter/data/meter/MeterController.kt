@@ -234,6 +234,12 @@ class MeterController internal constructor(
         }
     }
 
+    fun resumeLocation() {
+        if (!hasLocationPermission(context)) return
+        fareRule = FareRuleStore(context).load()
+        measurement.resumeLocation(fareRule)
+    }
+
     private fun startTrip(before: MeterState, after: jp.usuiensan.taxijokemeter.domain.meter.MeterRuntimeState) {
         fareRule = FareRuleStore(context).load()
         val now = Instant.now()

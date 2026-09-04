@@ -4,6 +4,7 @@ import android.app.Activity
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.location.LocationManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,6 +37,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import jp.usuiensan.taxijokemeter.data.location.DutyMeasurementController
 import jp.usuiensan.taxijokemeter.data.location.hasLocationPermission
 import jp.usuiensan.taxijokemeter.data.location.MeasurementDebugStore
@@ -48,6 +53,8 @@ import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
+import jp.usuiensan.taxijokemeter.domain.location.LocationAccessState
+import jp.usuiensan.taxijokemeter.domain.location.locationAccessState
 import jp.usuiensan.taxijokemeter.ui.meter.MeterScreen
 import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.receipt.ReceiptArtifactStore
@@ -67,6 +74,37 @@ fun AppShell() {
     val activity = context as Activity
     val meterRuntime by MeterRuntimeStore.snapshot.collectAsState()
     val meterController = remember { MeterController(context) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val locationManager = remember { context.getSystemService(LocationManager::class.java) }
+    val locationPreferences = remember { context.getSharedPreferences("location_access", Context.MODE_PRIVATE) }
+    var locationAccessRevision by remember { mutableStateOf(0) }
+    val locationAccess = remember(locationAccessRevision) {
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        locationAccessState(fine, coarse, locationManager.isLocationEnabled, locationPreferences.getBoolean("location_permission_requested_once", false), ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_FINE_LOCATION) || ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+    val requestLocationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        locationAccessRevision++
+        if (hasLocationPermission(context) && locationManager.isLocationEnabled) meterController.resumeLocation()
+    }
+    LaunchedEffect(showMeter) {
+        if (showMeter && locationAccess == LocationAccessState.LOCATION_PERMISSION_NONE && !locationPreferences.getBoolean("location_permission_requested_once", false)) {
+            locationPreferences.edit().putBoolean("location_permission_requested_once", true).apply()
+            requestLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        }
+    }
+    DisposableEffect(lifecycleOwner, showMeter) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                locationAccessRevision++
+                if (showMeter && hasLocationPermission(context) && locationManager.isLocationEnabled) meterController.resumeLocation()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val openAppSettings = { context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))) }
+    val openLocationSettings = { context.startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
     val openFareSettings = { showSettings = true; showMeter = false }
     DisposableEffect(showMeter) {
         activity.requestedOrientation = if (showMeter) {
@@ -91,7 +129,7 @@ fun AppShell() {
             showSettings -> FareRuleSettingsScreen(padding) { showSettings = false; showMeter = true }
             showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, openFareSettings)
             showReissue -> ReissueScreen(padding) { showReissue = false; showMeter = true }
-            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false }, { showReissue = true; showMeter = false })
+            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false }, { showReissue = true; showMeter = false }, locationAccess, { locationPreferences.edit().putBoolean("location_permission_requested_once", true).apply(); requestLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }, openAppSettings, openLocationSettings)
             else -> MeterScreen(padding, meterRuntime, meterController)
         }
     }

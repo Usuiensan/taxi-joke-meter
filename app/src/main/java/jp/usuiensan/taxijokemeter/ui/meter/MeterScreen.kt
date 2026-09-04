@@ -60,6 +60,7 @@ import jp.usuiensan.taxijokemeter.domain.meter.MeterMenu
 import jp.usuiensan.taxijokemeter.domain.meter.MeterState
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.model.FareAdjustmentType
+import jp.usuiensan.taxijokemeter.domain.location.LocationAccessState
 import jp.usuiensan.taxijokemeter.data.meter.SafetyWarning
 import jp.usuiensan.taxijokemeter.R
 import java.time.LocalDateTime
@@ -84,7 +85,7 @@ private val MeterFontFamily = FontFamily(
 )
 
 @Composable
-fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}, onOpenDebug: () -> Unit = {}, onOpenReissue: () -> Unit = {}) {
+fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, controller: MeterController, onOpenFareSettings: () -> Unit = {}, onOpenDebug: () -> Unit = {}, onOpenReissue: () -> Unit = {}, locationAccess: LocationAccessState = LocationAccessState.LOCATION_READY, onRequestLocationPermission: () -> Unit = {}, onOpenAppSettings: () -> Unit = {}, onOpenLocationSettings: () -> Unit = {}) {
     CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = MeterFontFamily)) {
         Box(
             modifier = Modifier.fillMaxSize().background(MeterBlack).padding(contentPadding).padding(10.dp),
@@ -101,6 +102,9 @@ fun MeterScreen(contentPadding: PaddingValues, runtime: MeterRuntimeSnapshot, co
                     },
                 ) {
                     LandscapeMeterLayout(runtime, controller, onOpenFareSettings, onOpenDebug, onOpenReissue)
+                    if (locationAccess == LocationAccessState.LOCATION_PERMISSION_NONE || locationAccess == LocationAccessState.PERMISSION_SETTINGS_REQUIRED || locationAccess == LocationAccessState.LOCATION_SERVICE_OFF) {
+                        LocationRecoveryPanel(locationAccess, onRequestLocationPermission, onOpenAppSettings, onOpenLocationSettings, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
+                    }
                 }
             }
         }
@@ -336,6 +340,20 @@ internal fun emptySoftKeyAction(label: String) = when (label) {
     "迎車" -> MeterAction.PICKUP
     "回送" -> MeterAction.DEADHEAD
     else -> null
+}
+
+@Composable
+private fun LocationRecoveryPanel(state: LocationAccessState, requestPermission: () -> Unit, openAppSettings: () -> Unit, openLocationSettings: () -> Unit, modifier: Modifier) {
+    val (message, label, action) = when (state) {
+        LocationAccessState.LOCATION_PERMISSION_NONE -> Triple("位置情報が必要です", "位置情報を許可", requestPermission)
+        LocationAccessState.PERMISSION_SETTINGS_REQUIRED -> Triple("位置情報の許可が必要です", "設定を開く", openAppSettings)
+        LocationAccessState.LOCATION_SERVICE_OFF -> Triple("位置情報がオフです", "位置情報をオン", openLocationSettings)
+        else -> return
+    }
+    Column(modifier.width(560.dp).background(Color(0xEE101417), RoundedCornerShape(4.dp)).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(message, color = MeterWhite, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        MeterButton(label, Color(0xFF2C9ED9), Modifier.fillMaxWidth().height(64.dp), size = 28.sp, onClick = action)
+    }
 }
 
 internal fun showsDateTime(state: MeterState, beforeDeparture: Boolean) =

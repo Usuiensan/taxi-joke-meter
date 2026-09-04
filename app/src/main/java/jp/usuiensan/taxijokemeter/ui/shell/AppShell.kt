@@ -51,6 +51,7 @@ import jp.usuiensan.taxijokemeter.data.fare.FareRuleStore
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettings
 import jp.usuiensan.taxijokemeter.data.fare.TripChargeSettingsStore
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
+import jp.usuiensan.taxijokemeter.domain.model.FarePreset
 import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.location.LocationAccessState
@@ -223,10 +224,19 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
     var reservationFee by remember(chargeSettings) { mutableStateOf(chargeSettings.reservationFeeYen.toString()) }
     var surchargePercent by remember(chargeSettings) { mutableStateOf(chargeSettings.surchargePercent.toString()) }
     var discountPercent by remember(chargeSettings) { mutableStateOf(chargeSettings.discountPercent.toString()) }
+    var selectedPresetId by remember(current, chargeSettings) {
+        mutableStateOf(FarePresets.BUILT_IN.firstOrNull { preset ->
+            preset.rule == current && preset.pickupFeeYen == chargeSettings.pickupFeeYen &&
+                preset.reservationFeeYen == chargeSettings.reservationFeeYen &&
+                preset.surchargePercent == chargeSettings.surchargePercent &&
+                preset.discountPercent == chargeSettings.discountPercent
+        }?.id)
+    }
     var error by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().padding(contentPadding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("運賃設定")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("選択中: ${selectedPresetId?.let { id -> FarePresets.BUILT_IN.first { it.id == id }.label } ?: "CUSTOM"}")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FarePresets.BUILT_IN.forEach { preset ->
                 Button(onClick = {
                     initialDistance = preset.rule.initialDistanceMeters.toString()
@@ -235,19 +245,26 @@ private fun FareRuleSettingsScreen(contentPadding: androidx.compose.foundation.l
                     incrementFare = preset.rule.distanceIncrementFareYen.toString()
                     lowSpeedLimit = preset.rule.lowSpeedLimitKmh.toString()
                     lowSpeedSeconds = preset.rule.lowSpeedTimeIncrementSeconds.toString()
-                }) { Text("プリセット: ${preset.label}") }
+                    pickupFee = preset.pickupFeeYen.toString()
+                    reservationFee = preset.reservationFeeYen.toString()
+                    surchargePercent = preset.surchargePercent.toString()
+                    discountPercent = preset.discountPercent.toString()
+                    selectedPresetId = preset.id
+                    saveFarePreset(context, preset)
+                }) { Text(preset.label) }
             }
         }
-        FareRuleField("初乗り距離 (m)", initialDistance) { initialDistance = it }
-        FareRuleField("初乗り運賃 (円)", initialFare) { initialFare = it }
-        FareRuleField("加算距離 (m)", distanceIncrement) { distanceIncrement = it }
-        FareRuleField("加算運賃 (円)", incrementFare) { incrementFare = it }
-        FareRuleField("低速判定速度 (km/h)", lowSpeedLimit) { lowSpeedLimit = it }
-        FareRuleField("低速時間加算 (秒)", lowSpeedSeconds) { lowSpeedSeconds = it }
-        FareRuleField("迎車料金 (円)", pickupFee) { pickupFee = it }
-        FareRuleField("予約料金 (円)", reservationFee) { reservationFee = it }
-        FareRuleField("割増率 (%)", surchargePercent) { surchargePercent = it }
-        FareRuleField("割引率 (%)", discountPercent) { discountPercent = it }
+        FareRuleField("初乗り距離 (m)", initialDistance) { selectedPresetId = null; initialDistance = it }
+        FareRuleField("初乗り運賃 (円)", initialFare) { selectedPresetId = null; initialFare = it }
+        FareRuleField("加算距離 (m)", distanceIncrement) { selectedPresetId = null; distanceIncrement = it }
+        FareRuleField("加算運賃 (円)", incrementFare) { selectedPresetId = null; incrementFare = it }
+        FareRuleField("低速判定速度 (km/h)", lowSpeedLimit) { selectedPresetId = null; lowSpeedLimit = it }
+        FareRuleField("低速時間加算 (秒)", lowSpeedSeconds) { selectedPresetId = null; lowSpeedSeconds = it }
+        FareRuleField("迎車料金 (円)", pickupFee) { selectedPresetId = null; pickupFee = it }
+        FareRuleField("予約料金 (円)", reservationFee) { selectedPresetId = null; reservationFee = it }
+        FareRuleField("割増率 (%)", surchargePercent) { selectedPresetId = null; surchargePercent = it }
+        FareRuleField("割引率 (%)", discountPercent) { selectedPresetId = null; discountPercent = it }
+        Text("タクシー系プリセットは参考値です")
         error?.let { Text(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onBack) { Text("戻る") }
@@ -283,6 +300,13 @@ internal fun saveFareSettings(
     val charges = TripChargeSettings(pickupFee.toLong(), reservationFee.toLong(), surchargePercent.toInt(), discountPercent.toInt())
     FareRuleStore(context).save(rule)
     TripChargeSettingsStore(context).save(charges)
+}
+
+internal fun saveFarePreset(context: Context, preset: FarePreset) {
+    FareRuleStore(context).save(preset.rule)
+    TripChargeSettingsStore(context).save(
+        TripChargeSettings(preset.pickupFeeYen, preset.reservationFeeYen, preset.surchargePercent, preset.discountPercent),
+    )
 }
 
 @Composable

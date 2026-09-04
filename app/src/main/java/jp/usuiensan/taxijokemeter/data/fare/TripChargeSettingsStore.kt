@@ -1,6 +1,7 @@
 package jp.usuiensan.taxijokemeter.data.fare
 
 import android.content.Context
+import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 
 data class TripChargeSettings(
     val pickupFeeYen: Long = 0,
@@ -17,10 +18,10 @@ class TripChargeSettingsStore(context: Context, name: String = PREFERENCES_NAME)
     private val preferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     fun load() = TripChargeSettings(
-        pickupFeeYen = preferences.getLong(KEY_PICKUP_FEE_YEN, 0),
-        reservationFeeYen = preferences.getLong(KEY_RESERVATION_FEE_YEN, 0),
-        surchargePercent = preferences.getInt(KEY_SURCHARGE_PERCENT, 0),
-        discountPercent = preferences.getInt(KEY_DISCOUNT_PERCENT, 0),
+        pickupFeeYen = preferences.getLong(KEY_PICKUP_FEE_YEN, FarePresets.TEN_YEN_PER_KM.pickupFeeYen),
+        reservationFeeYen = preferences.getLong(KEY_RESERVATION_FEE_YEN, FarePresets.TEN_YEN_PER_KM.reservationFeeYen),
+        surchargePercent = preferences.getInt(KEY_SURCHARGE_PERCENT, FarePresets.TEN_YEN_PER_KM.surchargePercent),
+        discountPercent = preferences.getInt(KEY_DISCOUNT_PERCENT, FarePresets.TEN_YEN_PER_KM.discountPercent),
     )
 
     fun save(settings: TripChargeSettings) {

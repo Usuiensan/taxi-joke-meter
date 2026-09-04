@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.ui.shell.saveFareSettings
+import jp.usuiensan.taxijokemeter.ui.shell.saveFarePreset
+import jp.usuiensan.taxijokemeter.domain.model.FarePresets
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
@@ -25,6 +27,21 @@ class TripChargeSettingsStoreTest {
 
         assertEquals(settings, TripChargeSettingsStore(context, name).load())
         context.deleteSharedPreferences(name)
+    }
+
+    @Test
+    fun selectingPresetPersistsAllTenPriceMasterValues() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        val context = IsolatedPreferencesContext(base, "preset-${UUID.randomUUID()}")
+
+        saveFarePreset(context, FarePresets.TAXI_RURAL)
+
+        assertEquals(FarePresets.TAXI_RURAL.rule, FareRuleStore(context).load())
+        assertEquals(
+            TripChargeSettings(300, 500, 20, 10),
+            TripChargeSettingsStore(context).load(),
+        )
+        context.clear()
     }
 
     @Test

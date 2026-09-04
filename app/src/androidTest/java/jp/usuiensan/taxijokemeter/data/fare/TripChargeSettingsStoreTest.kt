@@ -17,6 +17,16 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class TripChargeSettingsStoreTest {
     @Test
+    fun newStoreUsesRuralFarePresetByDefault() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        val context = IsolatedPreferencesContext(base, "default-fare-${UUID.randomUUID()}")
+
+        assertEquals(FarePresets.TAXI_RURAL.rule, FareRuleStore(context).load())
+
+        context.clear()
+    }
+
+    @Test
     fun savedSettingsAreLoadedAfterStoreIsRecreated() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "trip_charge_settings_test"

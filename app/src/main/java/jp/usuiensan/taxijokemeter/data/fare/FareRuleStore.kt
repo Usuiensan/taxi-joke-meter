@@ -45,6 +45,6 @@ class FareRuleStore(context: Context, name: String = PREFERENCES_NAME) {
         private const val KEY_LOW_SPEED_SECONDS = "low_speed_time_increment_seconds"
         private val KEYS = listOf(KEY_INITIAL_DISTANCE, KEY_INITIAL_FARE, KEY_DISTANCE_INCREMENT, KEY_INCREMENT_FARE, KEY_LOW_SPEED_LIMIT, KEY_LOW_SPEED_SECONDS)
 
-        fun defaultRule() = FarePresets.TEN_YEN_PER_KM.rule
+        fun defaultRule() = FarePresets.TAXI_RURAL.rule
     }
 }

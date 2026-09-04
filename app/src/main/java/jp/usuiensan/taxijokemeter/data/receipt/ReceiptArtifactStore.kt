@@ -9,12 +9,15 @@ import android.graphics.Typeface
 import androidx.core.content.FileProvider
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptData
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptTextRenderer
+import jp.usuiensan.taxijokemeter.domain.report.SafetyReportData
 import java.io.File
 import java.nio.charset.StandardCharsets
 
 class ReceiptArtifactStore(private val context: Context) {
     fun writeText(receipt: ReceiptData): File = file(receipt, "txt").also { it.writeText(ReceiptTextRenderer.render(receipt), StandardCharsets.UTF_8) }
     fun writePng(receipt: ReceiptData): File = file(receipt, "png").also { ReceiptPngRenderer.render(receipt).compress(Bitmap.CompressFormat.PNG, 100, it.outputStream()) }
+    fun writePdf(receipt: ReceiptData): File = file(receipt, "pdf").also { ReceiptPdfGenerator.write(receipt, it) }
+    fun writeSafetyReportPdf(report: SafetyReportData): File = File(File(context.cacheDir, "receipts").apply(File::mkdirs), "safety_report_${report.generatedAt.atZone(java.time.ZoneId.of("Asia/Tokyo")).toLocalDate().toString().replace("-", "")}_${report.trips.firstOrNull()?.tripNumber ?: 0}.pdf").also { SafetyReportPdfGenerator.write(report, it) }
     fun share(file: File, mimeType: String): Intent = Intent(Intent.ACTION_SEND).apply {
         type = mimeType
         putExtra(Intent.EXTRA_STREAM, uri(file))

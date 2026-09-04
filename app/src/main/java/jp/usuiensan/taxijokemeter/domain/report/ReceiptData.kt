@@ -32,4 +32,5 @@ data class ReceiptData(
     val tollTotalYen: Long,
     val totalFareYen: Long,
     val fareRuleSnapshot: FareRule?,
+    val dutySessionId: String = tripId,
 )

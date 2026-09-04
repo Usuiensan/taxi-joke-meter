@@ -13,6 +13,7 @@ import jp.usuiensan.taxijokemeter.domain.report.ReceiptPlaceData
 
 class ReceiptRepository(private val database: DutyDatabase) {
     suspend fun findForServiceDate(serviceDate: String): List<ReceiptData> = database.dutyDao().findCompletedTrips(serviceDate).map { toReceipt(it) }
+    suspend fun findForSession(sessionId: String): List<ReceiptData> = database.dutyDao().findTrips(sessionId).filter { it.status in setOf("COMPLETED", "VOIDED") }.map { toReceipt(it) }
     suspend fun findById(id: String): ReceiptData? {
         val trip = database.dutyDao().findTrip(id) ?: return null
         return toReceipt(trip)
@@ -38,6 +39,7 @@ class ReceiptRepository(private val database: DutyDatabase) {
             fareTotalYen = adjusted + fareCharges.sumOf(ReceiptChargeData::amountYen),
             tollTotalYen = tollCharges.sumOf(ReceiptChargeData::amountYen), totalFareYen = trip.totalFareYen,
             fareRuleSnapshot = fareRule(trip),
+            dutySessionId = trip.sessionId,
         )
     }
 

@@ -48,7 +48,7 @@ class MeterPresentationTest {
     }
 
     @Test fun totalShowsPaymentSoftKeysAndSummaryTitle() {
-        assertEquals(listOf("レシート共有", "安全レポート共有"), softKeyLabels(MeterState.TOTAL))
+        assertEquals(listOf("レシート", "レポート"), softKeyLabels(MeterState.TOTAL))
         assertEquals("支払", paymentSummaryTitle(MeterState.PAYMENT))
         assertEquals("合計", paymentSummaryTitle(MeterState.TOTAL))
         assertEquals(listOf("運賃料金計" to "2,700円", "通行料他" to "0円"), paymentSummaryRows(2_700))
@@ -106,7 +106,7 @@ class MeterPresentationTest {
         assertEquals(listOf("休憩", "迎車", "予約", "回送", null, "レポート", "再発行", "運賃制", "デバッグ", null), softKeySlots(MeterState.EMPTY))
         assertEquals(listOf("人員", "経由地", "迎車", "割増", "割引"), softKeySlots(MeterState.OCCUPIED))
         assertEquals(listOf("迎車", null, null, null, null), softKeySlots(MeterState.PAYMENT))
-        assertEquals(listOf("レシート共有", "安全レポート共有", null, null, null), softKeySlots(MeterState.TOTAL))
+        assertEquals(listOf("レシート", "レポート", null, null, null), softKeySlots(MeterState.TOTAL))
         assertEquals(listOf(null, null, null, null, "解除"), softKeySlots(MeterState.DEADHEAD))
     }
 

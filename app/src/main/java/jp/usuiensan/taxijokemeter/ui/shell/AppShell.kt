@@ -170,18 +170,20 @@ private fun ReissueScreen(contentPadding: androidx.compose.foundation.layout.Pad
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { val file = artifacts.writeText(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "text/plain"), "TXT共有")) }) { Text("TXT共有") }
                 Button(onClick = { scope.launch {
-                    val report = withContext(Dispatchers.IO) {
-                        val db = DutyDatabase.build(context)
-                        try {
-                            val trips = ReceiptRepository(db).findForSession(receipt.dutySessionId)
-                            val samples = DrivingSampleRepository(db).findByDutySessionId(receipt.dutySessionId)
-                            val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                            SafetyReportData.from(java.time.Instant.now(), samples, events, trips)
-                        } finally { db.close() }
+                    runCatching {
+                        val file = withContext(Dispatchers.IO) {
+                            val db = DutyDatabase.build(context)
+                            try {
+                                val trips = ReceiptRepository(db).findForSession(receipt.dutySessionId)
+                                val samples = DrivingSampleRepository(db).findByDutySessionId(receipt.dutySessionId)
+                                val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
+                                artifacts.writeSafetyReportPdf(SafetyReportData.from(java.time.Instant.now(), samples, events, trips))
+                            } finally { db.close() }
+                        }
+                        context.startActivity(Intent.createChooser(artifacts.share(file, "application/pdf"), "安全運転レポートを共有"))
                     }
-                    runCatching { context.startActivity(Intent.createChooser(artifacts.share(artifacts.writeSafetyReportPdf(report), "application/pdf"), "安全運転レポートを共有")) }
                 } }) { Text("安全運転レポート") }
-                Button(onClick = { runCatching { context.startActivity(Intent.createChooser(artifacts.share(artifacts.writePdf(receipt), "application/pdf"), "走行レシートを共有")) } }) { Text("走行レシート") }
+                Button(onClick = { scope.launch { runCatching { val file = withContext(Dispatchers.IO) { artifacts.writePdf(receipt) }; context.startActivity(Intent.createChooser(artifacts.share(file, "application/pdf"), "走行レシートを共有")) } } }) { Text("走行レシート") }
                 Button(onClick = { context.startActivity(artifacts.view(artifacts.writePng(receipt))) }) { Text("PNG表示") }
                 Button(onClick = { val file = artifacts.writePng(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "image/png"), "PNG共有")) }) { Text("PNG共有") }
             }

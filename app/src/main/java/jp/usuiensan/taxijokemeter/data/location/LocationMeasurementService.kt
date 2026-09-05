@@ -171,7 +171,11 @@ class LocationMeasurementService : Service() {
                 restDistanceMeters = restDistance?.toLong() ?: current.restDistanceMeters,
                 chargeProgress = if (sample.isFareContinuable) {
                     val values = accumulation ?: jp.usuiensan.taxijokemeter.domain.measurement.MeasurementAccumulation(current.chargeableDistanceMeters, current.lowSpeedSeconds, current.actualDistanceMeters)
-                    val mode = chargeModeController?.update(sample.speedMps, sample.timestamp.toEpochMilli()) ?: current.chargeProgress?.mode ?: ChargeProgressMode.DISTANCE
+                    val mode = when {
+                        sample.occupancyState == OccupancyState.EMPTY -> ChargeProgressMode.DISTANCE
+                        accumulation?.mode == jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode.TIME_FALLBACK -> ChargeProgressMode.TIME
+                        else -> chargeModeController?.update(sample.speedMps, sample.timestamp.toEpochMilli()) ?: current.chargeProgress?.mode ?: ChargeProgressMode.DISTANCE
+                    }
                     jp.usuiensan.taxijokemeter.data.meter.ChargeProgressUiState(mode, ChargeProgressMapper.fraction(fareRule, values.chargeableDistanceMeters, values.lowSpeedSeconds))
                 } else current.chargeProgress,
             ) }

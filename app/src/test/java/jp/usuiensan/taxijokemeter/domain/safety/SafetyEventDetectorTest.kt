@@ -14,25 +14,25 @@ class SafetyEventDetectorTest {
     @Test fun hardAccelerationStartsOnceAndCompletesAfterSettling() {
         val detector = SafetyEventDetector()
         assertTrue(detector.consume(sample(0, 0.0)).isEmpty())
-        val started = detector.consume(sample(3, 8.0)).filterIsInstance<SafetyEventSignal.Started>()
+        val started = detector.consume(sample(3, 8.0), imuAccelerationMps2 = 3.0, imuStable = true).filterIsInstance<SafetyEventSignal.Started>()
         assertEquals(1, started.size)
-        assertEquals(8.0 / 3.0, started.single().accelerationMps2!!, 0.001)
-        assertTrue(detector.consume(sample(4, 8.0)).isEmpty())
-        assertTrue(detector.consume(sample(6, 8.0)).filterIsInstance<SafetyEventSignal.Completed>().isEmpty())
-        assertEquals(1, detector.consume(sample(9, 8.0)).filterIsInstance<SafetyEventSignal.Completed>().size)
+        assertEquals(3.0, started.single().accelerationMps2!!, 0.001)
+        assertTrue(detector.consume(sample(4, 8.0), imuAccelerationMps2 = 0.0, imuStable = true).isEmpty())
+        assertEquals(1, detector.consume(sample(6, 8.0), imuAccelerationMps2 = 0.0, imuStable = true).filterIsInstance<SafetyEventSignal.Completed>().size)
+        assertTrue(detector.consume(sample(9, 8.0), imuAccelerationMps2 = 0.0, imuStable = true).isEmpty())
     }
 
     @Test fun repeatedHardDecelerationSamplesProduceOneEvent() {
         val detector = SafetyEventDetector()
         detector.consume(sample(0, 20.0))
-        val started = detector.consume(sample(3, 10.0)).filterIsInstance<SafetyEventSignal.Started>()
+        val started = detector.consume(sample(3, 10.0), imuAccelerationMps2 = -3.0, imuStable = true).filterIsInstance<SafetyEventSignal.Started>()
         assertEquals(1, started.size)
         assertEquals(20.0, started.single().previousSpeedMps!!, 0.001)
         assertEquals(10.0, started.single().currentSpeedMps!!, 0.001)
         assertEquals(-3.0, started.single().threshold!!, 0.001)
         assertTrue(!started.single().detectionId.isNullOrEmpty())
-        assertTrue(detector.consume(sample(4, 9.0)).none { it is SafetyEventSignal.Started })
-        assertTrue(detector.consume(sample(5, 8.0)).none { it is SafetyEventSignal.Started })
+        assertTrue(detector.consume(sample(4, 9.0), imuAccelerationMps2 = -2.0, imuStable = true).none { it is SafetyEventSignal.Started })
+        assertTrue(detector.consume(sample(5, 8.0), imuAccelerationMps2 = -1.0, imuStable = true).none { it is SafetyEventSignal.Started })
     }
 
     @Test fun overspeedNeedsFiveSecondsAndCompletesAfterTwoSecondsBelowRelease() {
@@ -67,6 +67,13 @@ class SafetyEventDetectorTest {
         detector.consume(sample(3, 0.0), imuAccelerationMps2 = 0.0, imuStable = true)
         val completed = detector.consume(sample(4, 0.0), imuAccelerationMps2 = 0.0, imuStable = true).filterIsInstance<SafetyEventSignal.Completed>()
         assertEquals(SafetyEventSource.IMU, completed.single().event.source)
+    }
+
+    @Test fun unstableImuAndGpsSpeedChangeProducesNoAccelerationEvent() {
+        val detector = SafetyEventDetector()
+        detector.consume(sample(0, 0.0))
+        assertTrue(detector.consume(sample(3, 20.0), imuAccelerationMps2 = null, imuStable = false)
+            .none { it is SafetyEventSignal.Started || it is SafetyEventSignal.Completed })
     }
 
     private fun sample(

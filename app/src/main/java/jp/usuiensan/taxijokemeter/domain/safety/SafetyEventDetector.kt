@@ -39,6 +39,7 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
 
         val signals = buildList {
             acceleration(sample, imuAccelerationMps2, imuStable)?.let { addAll(handleAcceleration(sample, it)) }
+                ?: run { activeAcceleration = null }
             addAll(handleOverspeed(sample))
         }
         history.addLast(sample)
@@ -56,14 +57,8 @@ class SafetyEventDetector(private val thresholds: SafetyThresholds = SafetyThres
     }
 
     private fun acceleration(current: DrivingSample, imuAccelerationMps2: Double?, imuStable: Boolean): AccelerationMeasurement? {
-        if (imuStable) return imuAccelerationMps2?.let { AccelerationMeasurement(it, history.lastOrNull() ?: current, SafetyEventSource.IMU) }
-        if (imuAccelerationMps2 != null) return null
-        val currentTime = timeMillis(current)
-        val previous = history.minByOrNull { previous -> abs((currentTime - timeMillis(previous)) / 1_000.0 - 3.0) }
-            ?: return null
-        val seconds = (currentTime - timeMillis(previous)) / 1_000.0
-        if (seconds !in thresholds.accelerationWindowMinSeconds..thresholds.accelerationWindowMaxSeconds) return null
-        return AccelerationMeasurement((current.speedMps!! - previous.speedMps!!) / seconds, previous, SafetyEventSource.GPS)
+        if (!imuStable || imuAccelerationMps2 == null || !imuAccelerationMps2.isFinite()) return null
+        return AccelerationMeasurement(imuAccelerationMps2, history.lastOrNull() ?: current, SafetyEventSource.IMU)
     }
 
     private fun handleAcceleration(sample: DrivingSample, measurement: AccelerationMeasurement): List<SafetyEventSignal> {

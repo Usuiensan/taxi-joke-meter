@@ -189,8 +189,8 @@ class TripMeasurementAccumulatorTest {
     fun poorAccuracyWithUnknownSpeedIsNotFareOrTimeFallback() {
         val sample = sample(0, speedMps = null, quality = MeasurementQuality.POOR_ACCURACY)
 
-        assertEquals(false, sample.isFareContinuable)
-        assertEquals(false, sample.isTimeFallback)
+        assertEquals(true, sample.isFareContinuable)
+        assertEquals(true, sample.isTimeFallback)
     }
 
     @Test

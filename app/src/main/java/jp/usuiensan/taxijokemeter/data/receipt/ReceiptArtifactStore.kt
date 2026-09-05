@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import androidx.core.content.res.ResourcesCompat
 import androidx.core.content.FileProvider
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptData
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptTextRenderer
@@ -66,7 +65,7 @@ object ReceiptPngRenderer {
         val lineHeight = 30
         val bitmap = Bitmap.createBitmap(width, (lines.size * lineHeight + 32).coerceAtLeast(128), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap).apply { drawColor(android.graphics.Color.WHITE) }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; textSize = 20f; typeface = context?.let { ResourcesCompat.getFont(it, jp.usuiensan.taxijokemeter.R.font.biz_udpgothic_regular) } ?: Typeface.MONOSPACE }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; textSize = 20f; typeface = Typeface.MONOSPACE }
         lines.forEachIndexed { index, line ->
             val y = 25f + index * lineHeight
             val x = if (line.contains("円")) (width - 12f - paint.measureText(line)).coerceAtLeast(8f) else 12f

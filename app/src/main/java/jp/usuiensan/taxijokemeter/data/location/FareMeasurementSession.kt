@@ -40,6 +40,7 @@ class FareMeasurementSession(fareRule: FareRule) {
         val previous = anchor
         anchor = current
         if (previous == null) return null
+        if (previous.isTimeFallback && current.isValid) return result
         val next = accumulator?.add(previous, current, distanceOnly = occupancyState == OccupancyState.EMPTY) ?: return null
         result = next
         return next

@@ -19,7 +19,7 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.max
 
 private val JST = ZoneId.of("Asia/Tokyo")
-private val DATE_TIME = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm").withZone(JST)
+private val DATE_TIME = DateTimeFormatter.ofPattern("yyyy年M月d日 H時mm分").withZone(JST)
 private const val PAGE_W = 595f
 private const val PAGE_H = 842f
 private const val MARGIN = 28f
@@ -60,10 +60,10 @@ object SafetyReportPdfGenerator {
     private fun score(e: SafetyEvaluation) = e.score?.let { "%.1f".format(it) } ?: "－"
     private fun rank(e: SafetyEvaluation) = when (e.rank) { SafetyRank.INSUFFICIENT_DATA -> "データ不足"; else -> e.rank.name }
     private fun operation(e: SafetyEvaluation, accel: Boolean): String { val i = e.input; return if (accel) "${i.weakAccelCount + i.strongAccelCount}回（${i.weakAccelCount}/${i.strongAccelCount}）" else "${i.weakBrakeCount + i.strongBrakeCount}回（${i.weakBrakeCount}/${i.strongBrakeCount}）" }
-    private fun seconds(e: SafetyEvaluation) = "%02d:%02d:%02d".format(e.input.overspeedSecondsByBand.values.sum().toLong() / 3600, e.input.overspeedSecondsByBand.values.sum().toLong() / 60 % 60, e.input.overspeedSecondsByBand.values.sum().toLong() % 60)
+    private fun seconds(e: SafetyEvaluation): String = e.input.overspeedSecondsByBand.values.sum().toLong().let { total -> buildString { if (total >= 3600) append(total / 3600).append("時間"); if (total >= 60) append(total / 60 % 60).append("分"); append(total % 60).append("秒") } }
     private fun speed(data: SafetyReportData, mode: RoadMode, occupied: Boolean) = data.maxSpeed(mode, if (occupied) jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.OCCUPIED else jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY)?.let { "${it}km/h" } ?: "－"
     private fun eventName(name: String) = when (name) { "HARD_ACCELERATION" -> "急加速"; "HARD_DECELERATION" -> "急減速"; "OVERSPEED" -> "速度超過"; else -> name }
-    private fun shortTime(value: java.time.Instant?) = value?.let { DateTimeFormatter.ofPattern("HH:mm").withZone(JST).format(it) } ?: "-"
+    private fun shortTime(value: java.time.Instant?) = value?.let { DateTimeFormatter.ofPattern("H時mm分").withZone(JST).format(it) } ?: "-"
     private fun place(value: String?) = value?.takeIf(String::isNotBlank) ?: "位置情報なし"
 }
 
@@ -120,13 +120,13 @@ object SafetyReportPngGenerator {
     private fun drawGraph(canvas: Canvas, paint: Paint, data: SafetyReportData, top: Float, bottom: Float) {
         val left = LEFT + 55f; val right = RIGHT; val height = bottom - top
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f; paint.color = 0xff222222.toInt(); canvas.drawRect(left, top, right, bottom, paint)
-        for (kmh in 0..120 step 20) { paint.color = if (kmh in setOf(60, 80, 100)) 0xff777777.toInt() else 0xffdddddd.toInt(); paint.strokeWidth = if (kmh in setOf(60, 80, 100)) 3f else 1f; val y = bottom - height * kmh / 130f; canvas.drawLine(left, y, right, y, paint); paint.style = Paint.Style.FILL; paint.textSize = 18f; canvas.drawText("$kmh", LEFT, y + 6f, paint); paint.style = Paint.Style.STROKE }
+        listOf(0, 20, 40, 60, 80, 90, 100, 120, 130).forEach { kmh -> paint.color = if (kmh == 60) 0xff1565c0.toInt() else if (kmh == 90) 0xff8e24aa.toInt() else if (kmh in setOf(80, 100)) 0xff9e9e9e.toInt() else 0xffdddddd.toInt(); paint.strokeWidth = if (kmh == 60 || kmh == 90) 4f else if (kmh in setOf(80, 100)) 2f else 1f; val y = bottom - height * kmh / 130f; canvas.drawLine(left, y, right, y, paint); paint.style = Paint.Style.FILL; paint.textSize = 18f; canvas.drawText("$kmh", LEFT, y + 6f, paint); paint.style = Paint.Style.STROKE }
         val valid = data.samples.filter { it.isValid && it.speedMps != null }; if (valid.size < 2) return
         val start = valid.first().timestamp.toEpochMilli().toDouble(); val end = max(start + 1, valid.last().timestamp.toEpochMilli().toDouble()); val x: (Long) -> Float = { left + ((it - start) / (end - start)).toFloat() * (right - left) }; val y: (Double) -> Float = { bottom - (it * 3.6 / 130.0).toFloat().coerceIn(0f, 1f) * height }
         paint.color = 0xff1261a0.toInt(); paint.strokeWidth = 3f; val path = Path(); valid.forEachIndexed { i, s -> val px = x(s.timestamp.toEpochMilli()); val py = y(s.speedMps!!); if (i == 0) path.moveTo(px, py) else path.lineTo(px, py) }; canvas.drawPath(path, paint)
-        paint.style = Paint.Style.FILL; data.events.filter { it.type != SafetyEventType.OVERSPEED }.forEach { event -> valid.minByOrNull { kotlin.math.abs(it.timestamp.toEpochMilli() - (event.startedAtEpochMillis ?: Long.MIN_VALUE)) }?.let { s -> paint.color = if (event.type == SafetyEventType.HARD_ACCELERATION) 0xff16803c.toInt() else 0xffc62828.toInt(); canvas.drawCircle(x(s.timestamp.toEpochMilli()), y(s.speedMps!!), 9f, paint) } }
-        paint.color = 0xffe65100.toInt(); paint.textSize = 19f; canvas.drawText("速度", right - 300f, top - 12f, paint); paint.color = 0xff16803c.toInt(); canvas.drawText("急加速", right - 230f, top - 12f, paint); paint.color = 0xffc62828.toInt(); canvas.drawText("急減速", right - 140f, top - 12f, paint); paint.color = 0xffe65100.toInt(); canvas.drawText("速度超過", right - 55f, top - 12f, paint)
-        paint.color = android.graphics.Color.BLACK; paint.textSize = 16f; val minutes = ((end - start) / 60_000.0).coerceAtLeast(1.0); val step = when { minutes <= 15 -> 5 else -> 10 }; var t = start.toLong(); while (t <= end) { canvas.drawText(DateTimeFormatter.ofPattern("HH:mm").withZone(JST).format(java.time.Instant.ofEpochMilli(t)), x(t), bottom + 28f, paint); t += step * 60_000L }
+        paint.style = Paint.Style.FILL; data.events.forEach { event -> valid.minByOrNull { kotlin.math.abs(it.timestamp.toEpochMilli() - (event.startedAtEpochMillis ?: Long.MIN_VALUE)) }?.let { s -> paint.color = when (event.type) { SafetyEventType.HARD_ACCELERATION -> 0xff16803c.toInt(); SafetyEventType.HARD_DECELERATION -> 0xffc62828.toInt(); SafetyEventType.OVERSPEED -> 0xffe65100.toInt() }; canvas.drawCircle(x(s.timestamp.toEpochMilli()), y(s.speedMps!!), 9f, paint) } }
+        paint.textSize = 19f; listOf("速度" to 0xff1261a0.toInt(), "急加速" to 0xff16803c.toInt(), "急減速" to 0xffc62828.toInt(), "速度超過" to 0xffe65100.toInt()).forEachIndexed { i, (label, color) -> paint.color = color; canvas.drawText(label, right - 330f + i * 82f, top - 12f, paint) }
+        paint.color = android.graphics.Color.BLACK; paint.textSize = 16f; val minutes = ((end - start) / 60_000.0).coerceAtLeast(1.0); val step = when { minutes <= 30 -> 5 else -> ((minutes / 6.0).toInt() / 5 * 5).coerceAtLeast(10) }; var t = start.toLong(); while (t <= end) { canvas.drawText(DateTimeFormatter.ofPattern("H時mm分").withZone(JST).format(java.time.Instant.ofEpochMilli(t)), x(t), bottom + 28f, paint); t += step * 60_000L }
         paint.style = Paint.Style.FILL
     }
     private fun score(e: SafetyEvaluation) = e.score?.let { "%.1f".format(it) } ?: "－"
@@ -134,6 +134,6 @@ object SafetyReportPngGenerator {
     private fun operation(e: SafetyEvaluation, accel: Boolean) = if (accel) "${e.input.weakAccelCount + e.input.strongAccelCount}回" else "${e.input.weakBrakeCount + e.input.strongBrakeCount}回"
     private fun speed(data: SafetyReportData, mode: RoadMode, occupied: Boolean) = data.maxSpeed(mode, if (occupied) jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.OCCUPIED else jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY)?.let { "${it}km/h" } ?: "－"
     private fun eventName(name: String) = when (name) { "HARD_ACCELERATION" -> "急加速"; "HARD_DECELERATION" -> "急減速"; "OVERSPEED" -> "速度超過"; else -> name }
-    private fun shortTime(value: java.time.Instant?) = value?.let { DateTimeFormatter.ofPattern("HH:mm").withZone(JST).format(it) } ?: "-"
+    private fun shortTime(value: java.time.Instant?) = value?.let { DateTimeFormatter.ofPattern("H時mm分").withZone(JST).format(it) } ?: "-"
     private fun place(value: String?) = value?.takeIf(String::isNotBlank)?.take(12) ?: "位置情報なし"
 }

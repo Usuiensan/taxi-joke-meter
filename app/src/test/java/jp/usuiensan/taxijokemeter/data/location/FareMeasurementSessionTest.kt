@@ -129,7 +129,7 @@ class FareMeasurementSessionTest {
     }
 
     @Test fun shortInvalidGapCanRecoverDistanceWithoutLowSpeedTime() {
-        MeasurementQuality.entries.filter { it != MeasurementQuality.VALID }.forEach { quality ->
+        MeasurementQuality.entries.filter { it != MeasurementQuality.VALID && it != MeasurementQuality.POOR_ACCURACY }.forEach { quality ->
             val session = FareMeasurementSession(rule)
             session.begin()
             session.add(sample(0.001, 1))
@@ -148,7 +148,7 @@ class FareMeasurementSessionTest {
 
         val result = session.add(sample(0.002, 6, MeasurementQuality.POOR_ACCURACY, speedMps = null, occupancyState = OccupancyState.OCCUPIED))
 
-        assertEquals(null, result)
+        assertEquals(5L, result!!.lowSpeedSeconds)
     }
 
     @Test fun returningToValidAfterPoorAccuracyDoesNotBridgeDistance() {
@@ -159,8 +159,8 @@ class FareMeasurementSessionTest {
 
         val result = session.add(sample(0.003, 7, occupancyState = OccupancyState.OCCUPIED))
 
-        assertEquals(182L, result!!.chargeableDistanceMeters)
-        assertEquals(0L, result.lowSpeedSeconds)
+        assertEquals(0L, result!!.chargeableDistanceMeters)
+        assertEquals(5L, result.lowSpeedSeconds)
     }
 
     private fun sample(

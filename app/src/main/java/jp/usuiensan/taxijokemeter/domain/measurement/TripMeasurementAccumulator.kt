@@ -29,8 +29,8 @@ class TripMeasurementAccumulator(private val fareRule: FareRule) {
         val distancePrevious = lastAcceptedSample ?: previous
         val mode = when {
             !previous.isFareContinuable || !current.isFareContinuable -> FareMeasurementMode.UNAVAILABLE
-            current.isTimeFallback && !distanceOnly -> {
-                elapsedBetween(previous, current)?.let { if (!it.isZero) lowSpeedDuration = lowSpeedDuration.plus(it) }
+            current.isTimeFallback -> {
+                if (!distanceOnly) elapsedBetween(previous, current)?.let { if (!it.isZero) lowSpeedDuration = lowSpeedDuration.plus(it) }
                 FareMeasurementMode.TIME_FALLBACK
             }
             previous.isTimeFallback -> FareMeasurementMode.DISTANCE

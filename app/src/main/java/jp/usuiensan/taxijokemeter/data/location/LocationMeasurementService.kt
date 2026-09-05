@@ -153,7 +153,7 @@ class LocationMeasurementService : Service() {
                     }
                 }
             }
-            val accumulation = if (isGpsFix && sample.occupancyState == OccupancyState.OCCUPIED) fareMeasurement?.add(sample) else null
+            val accumulation = if (isGpsFix && shouldAccumulateFare(sample.occupancyState)) fareMeasurement?.add(sample) else null
             if (isGpsFix) runtimeState = runtimeState.advance(sample)
             val restId = MeterRuntimeStore.snapshot.value.restIntervalId.takeIf { sample.occupancyState == OccupancyState.REST }
             val restDistance = runtimeState.restDistanceMeters.takeIf { restId != null }

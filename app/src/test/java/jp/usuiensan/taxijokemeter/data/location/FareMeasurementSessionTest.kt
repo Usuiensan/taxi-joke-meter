@@ -14,6 +14,12 @@ import java.time.Instant
 class FareMeasurementSessionTest {
     private val rule = FareRule(1_000, 500, 200, 100, 10, 75)
 
+    @Test fun fareMeasurementIncludesOccupiedAndPaymentMeasurementStates() {
+        assertEquals(true, shouldAccumulateFare(OccupancyState.OCCUPIED))
+        assertEquals(true, shouldAccumulateFare(OccupancyState.EMPTY))
+        assertEquals(false, shouldAccumulateFare(OccupancyState.REST))
+    }
+
     @Test fun beginningTwiceDoesNotResetAnActiveFareMeasurement() {
         val session = FareMeasurementSession(rule)
         session.begin(OccupancyState.OCCUPIED)
@@ -66,6 +72,31 @@ class FareMeasurementSessionTest {
 
         assertEquals(91L, result!!.chargeableDistanceMeters)
         assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test fun paymentStationaryAddsNeitherDistanceNorTime() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.EMPTY)
+        session.add(sample(0.001, 1, speedMps = 0.0, occupancyState = OccupancyState.EMPTY))
+        val result = session.add(sample(0.001, 2, speedMps = 0.0, occupancyState = OccupancyState.EMPTY))!!
+
+        assertEquals(0L, result.actualDistanceMeters)
+        assertEquals(0L, result.lowSpeedSeconds)
+    }
+
+    @Test fun paymentToOccupiedContinuesFromNewAnchorWithoutDistanceJump() {
+        val session = FareMeasurementSession(rule)
+        session.begin(OccupancyState.OCCUPIED)
+        session.add(sample(0.001, 1, occupancyState = OccupancyState.OCCUPIED))
+        session.add(sample(0.002, 2, occupancyState = OccupancyState.OCCUPIED))
+        session.setOccupancyState(OccupancyState.EMPTY)
+        session.add(sample(0.003, 3, occupancyState = OccupancyState.EMPTY))
+        session.setOccupancyState(OccupancyState.OCCUPIED)
+        assertEquals(null, session.add(sample(0.004, 4, occupancyState = OccupancyState.OCCUPIED)))
+        val result = session.add(sample(0.005, 5, occupancyState = OccupancyState.OCCUPIED))!!
+
+        assertEquals(91L, result.actualDistanceMeters)
+        assertEquals(91L, result.chargeableDistanceMeters)
     }
 
     @Test fun changingOccupancyCutsTheSegmentAnchor() {

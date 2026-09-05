@@ -6,6 +6,9 @@ import jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState
 import jp.usuiensan.taxijokemeter.domain.measurement.TripMeasurementAccumulator
 import jp.usuiensan.taxijokemeter.domain.model.FareRule
 
+internal fun shouldAccumulateFare(occupancyState: OccupancyState): Boolean =
+    occupancyState == OccupancyState.OCCUPIED || occupancyState == OccupancyState.EMPTY
+
 class FareMeasurementSession(fareRule: FareRule) {
     private val fareRule = fareRule
     private var accumulator: TripMeasurementAccumulator? = null

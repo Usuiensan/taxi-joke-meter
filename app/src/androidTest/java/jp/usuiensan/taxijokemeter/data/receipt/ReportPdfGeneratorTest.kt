@@ -30,4 +30,9 @@ class ReportPdfGeneratorTest {
         PdfRenderer(ParcelFileDescriptor.open(reportFile, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer -> assertEquals(1, renderer.pageCount); renderer.openPage(0).use { assertTrue(it.width < it.height) } }
         PdfRenderer(ParcelFileDescriptor.open(receiptFile, ParcelFileDescriptor.MODE_READ_ONLY)).use { renderer -> assertEquals(1, renderer.pageCount); renderer.openPage(0).use { assertTrue(it.width < it.height) } }
     }
+
+    @Test fun receiptPngFontLoadsFromBundledBIZUdGothicTtf() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        assertTrue(androidx.core.content.res.ResourcesCompat.getFont(context, jp.usuiensan.taxijokemeter.R.font.receipt_biz_udgothic_regular) != null)
+    }
 }

@@ -21,6 +21,7 @@ data class DrivingSampleEntity(
     val longitude: Double,
     val accuracyMeters: Double,
     val speedMps: Double?,
+    val graphSpeedMps: Double?,
     val speedSource: String,
     val bearingDegrees: Double?,
     val roadMode: String,

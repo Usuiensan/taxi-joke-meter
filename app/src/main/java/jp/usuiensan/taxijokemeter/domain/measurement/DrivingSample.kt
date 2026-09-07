@@ -22,6 +22,7 @@ data class DrivingSample(
     val measurementQuality: MeasurementQuality,
     val elapsedRealtimeNanos: Long? = null,
     val speedSource: SpeedSource = if (speedMps == null) SpeedSource.UNAVAILABLE else SpeedSource.REPORTED,
+    val graphSpeedMps: Double? = speedMps,
 ) {
     val isValid: Boolean
         get() = measurementQuality == MeasurementQuality.VALID

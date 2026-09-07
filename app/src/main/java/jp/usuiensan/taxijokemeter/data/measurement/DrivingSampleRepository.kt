@@ -25,14 +25,14 @@ class DrivingSampleRepository(private val database: DutyDatabase) {
 private fun DrivingSample.toEntity() = DrivingSampleEntity(
     id = 0, dutySessionId = dutySessionId, timestampEpochSecond = timestamp.epochSecond, timestampNano = timestamp.nano,
     elapsedRealtimeNanos = elapsedRealtimeNanos, latitude = latitude, longitude = longitude, accuracyMeters = accuracyMeters,
-    speedMps = speedMps, speedSource = speedSource.name, bearingDegrees = bearingDegrees, roadMode = roadMode.name,
+    speedMps = speedMps, graphSpeedMps = graphSpeedMps, speedSource = speedSource.name, bearingDegrees = bearingDegrees, roadMode = roadMode.name,
     occupancyState = occupancyState.name, measurementQuality = measurementQuality.name,
 )
 
 private fun DrivingSampleEntity.toDomain() = DrivingSample(
     dutySessionId = dutySessionId, timestamp = Instant.ofEpochSecond(timestampEpochSecond, timestampNano.toLong()),
     elapsedRealtimeNanos = elapsedRealtimeNanos, latitude = latitude, longitude = longitude, accuracyMeters = accuracyMeters,
-    speedMps = speedMps, speedSource = SpeedSource.valueOf(speedSource), bearingDegrees = bearingDegrees,
+    speedMps = speedMps, graphSpeedMps = graphSpeedMps, speedSource = SpeedSource.valueOf(speedSource), bearingDegrees = bearingDegrees,
     roadMode = RoadMode.valueOf(roadMode), occupancyState = OccupancyState.valueOf(occupancyState),
     measurementQuality = MeasurementQuality.valueOf(measurementQuality),
 )

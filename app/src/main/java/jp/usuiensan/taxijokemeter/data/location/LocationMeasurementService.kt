@@ -85,6 +85,7 @@ class LocationMeasurementService : Service() {
     private lateinit var safetyEventRepository: SafetyEventRepository
     private val safetyEventDetector = SafetyEventDetector()
     private val imuMotionTracker = ImuMotionTracker()
+    private val speedGraphEstimator = SpeedGraphEstimator()
     private lateinit var sensorManager: SensorManager
     private lateinit var audioCuePlayer: AudioCuePlayer
     private lateinit var mapper: LocationSampleMapper
@@ -119,6 +120,14 @@ class LocationMeasurementService : Service() {
             location.elapsedRealtimeNanos.takeIf { it > 0L }?.let(healthTracker::recordFix)
             val sample = mapper.map(location, runtimeState.sampleState, Instant.now()).let {
                 if (isGpsFix) it else it.copy(measurementQuality = MeasurementQuality.POOR_ACCURACY)
+            }.let { mapped ->
+                val estimate = speedGraphEstimator.update(
+                    location.elapsedRealtimeNanos.takeIf { it > 0L } ?: nowElapsedRealtimeNanos,
+                    mapped.speedMps.takeIf { isGpsFix },
+                    imuMotionTracker.longitudinalAcceleration(mapped.bearingDegrees),
+                    imuMotionTracker.state == ImuMountState.STABLE,
+                )
+                mapped.copy(graphSpeedMps = estimate.graphSpeedMps)
             }
             if (isGpsFix && sample.isDisplayValid) hasValidGpsFix = true
             if (sample.isDisplayValid && shouldRefreshCurrentLocation(lastGeocodedAtMillis, lastGeocodedLatitude, lastGeocodedLongitude, SystemClock.elapsedRealtime(), sample.latitude, sample.longitude) && geocodeInFlight.compareAndSet(false, true)) {
@@ -269,6 +278,7 @@ class LocationMeasurementService : Service() {
             )
             fareMeasurement = FareMeasurementSession(fareRule)
             chargeModeController = ChargeProgressModeController(fareRule.lowSpeedLimitKmh.toDouble()).also { it.reset() }
+            speedGraphEstimator.reset()
             savedSampleCount.set(0)
             hasValidGpsFix = false
             latestGpsLocation = null
@@ -449,7 +459,20 @@ class LocationMeasurementService : Service() {
             if (!hasValidGpsFix && health == LocationHealth.UNAVAILABLE) {
                 MeterRuntimeStore.update { it.copy(currentLocation = it.currentLocation.copy(status = CurrentLocationStatus.GPS_UNAVAILABLE)) }
             }
-            healthHandler.postDelayed(this, 1_000L)
+            if (MeasurementDebugStore.snapshot.value.running) {
+                val now = SystemClock.elapsedRealtimeNanos()
+                val estimate = speedGraphEstimator.update(now, null, imuMotionTracker.longitudinalAcceleration(latestGpsLocation?.bearing?.toDouble()), imuMotionTracker.state == ImuMountState.STABLE)
+                if (estimate.speedMps != null && latestGpsLocation != null && estimate.graphSpeedMps != null) {
+                    val derived = mapper.map(latestGpsLocation!!, runtimeState.sampleState, Instant.now()).copy(
+                        speedMps = estimate.speedMps,
+                        graphSpeedMps = estimate.graphSpeedMps,
+                        speedSource = jp.usuiensan.taxijokemeter.domain.measurement.SpeedSource.DERIVED,
+                        measurementQuality = MeasurementQuality.STALE,
+                    )
+                    scope.launch(sampleProcessingDispatcher) { repository.save(derived) }
+                }
+            }
+            healthHandler.postDelayed(this, 500L)
         }
     }
 

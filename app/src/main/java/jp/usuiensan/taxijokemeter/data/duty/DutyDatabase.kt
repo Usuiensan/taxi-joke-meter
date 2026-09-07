@@ -12,7 +12,7 @@ import jp.usuiensan.taxijokemeter.data.measurement.DrivingSampleEntity
 import jp.usuiensan.taxijokemeter.data.safety.SafetyEventDao
 import jp.usuiensan.taxijokemeter.data.safety.SafetyEventEntity
 
-@Database(entities = [DutySessionEntity::class, TripEntity::class, TripPlaceEntity::class, TripChargeEntity::class, RestIntervalEntity::class, DutyEventEntity::class, DrivingSampleEntity::class, SafetyEventEntity::class], version = 10, exportSchema = false)
+@Database(entities = [DutySessionEntity::class, TripEntity::class, TripPlaceEntity::class, TripChargeEntity::class, RestIntervalEntity::class, DutyEventEntity::class, DrivingSampleEntity::class, SafetyEventEntity::class], version = 11, exportSchema = false)
 @TypeConverters(DutyConverters::class)
 abstract class DutyDatabase : RoomDatabase() {
     abstract fun dutyDao(): DutyDao
@@ -21,7 +21,7 @@ abstract class DutyDatabase : RoomDatabase() {
 
     companion object {
         fun build(context: Context, databaseName: String = "duty.db"): DutyDatabase = Room.databaseBuilder(context, DutyDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .build()
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -116,6 +116,13 @@ abstract class DutyDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.addColumnIfMissing("fareAdjustmentType", "TEXT NOT NULL DEFAULT 'NONE'")
                 db.addColumnIfMissing("fareAdjustmentPercent", "INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                if (!db.hasColumn("driving_samples", "graphSpeedMps")) db.execSQL("ALTER TABLE driving_samples ADD COLUMN graphSpeedMps REAL")
+                db.execSQL("UPDATE driving_samples SET graphSpeedMps = speedMps")
             }
         }
 

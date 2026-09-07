@@ -43,7 +43,7 @@ class DutyDatabaseMigrationTest {
 
         val migrated = DutyDatabase.build(context, databaseName)
         val db = migrated.openHelper.readableDatabase
-        assertEquals(10, db.version)
+        assertEquals(11, db.version)
         db.query("SELECT actualDistanceMeters, chargeableDistanceMeters, meteredFareYen, totalFareYen FROM trips WHERE id = 'trip-v8'").use {
             assertTrue(it.moveToFirst())
             assertEquals(1_250L, it.getLong(0))

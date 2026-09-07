@@ -100,7 +100,11 @@ fun AppShell() {
         locationAccessRevision++
         if (hasLocationPermission(context) && locationManager.isLocationEnabled) meterController.resumeLocation()
     }
+    val requestNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(showMeter) {
+        if (showMeter && android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         if (showMeter && locationAccess == LocationAccessState.LOCATION_PERMISSION_NONE && !locationPreferences.getBoolean("location_permission_requested_once", false)) {
             locationPreferences.edit().putBoolean("location_permission_requested_once", true).apply()
             requestLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))

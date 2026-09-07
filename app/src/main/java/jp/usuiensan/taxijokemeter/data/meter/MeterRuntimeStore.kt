@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -66,6 +67,8 @@ data class CurrentLocationDisplayState(
     val facilityName: String? = null,
     val status: CurrentLocationStatus = CurrentLocationStatus.GPS_LOADING,
 )
+
+internal fun fareNotificationText(fareYen: Long) = "¥%,d".format(Locale.US, fareYen)
 
 internal fun MeterRuntimeSnapshot.toMeterRuntimeState() = MeterRuntimeState(dutyLifecycle, meterState, dutyActivity, roadMode, menu)
 

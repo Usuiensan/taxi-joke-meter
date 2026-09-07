@@ -21,6 +21,7 @@ import android.os.Handler
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import jp.usuiensan.taxijokemeter.MainActivity
 import jp.usuiensan.taxijokemeter.data.duty.DutyDatabase
 import jp.usuiensan.taxijokemeter.data.duty.DutyRecordRepository
@@ -48,6 +49,7 @@ import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventDetector
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSignal
 import jp.usuiensan.taxijokemeter.data.location.ImuMotionTracker
 import jp.usuiensan.taxijokemeter.data.meter.MeterRuntimeStore
+import jp.usuiensan.taxijokemeter.data.meter.fareNotificationText
 import jp.usuiensan.taxijokemeter.data.meter.toMeterRuntimeState
 import jp.usuiensan.taxijokemeter.data.meter.safetyWarningText
 import jp.usuiensan.taxijokemeter.data.meter.ChargeProgressMapper
@@ -66,6 +68,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -231,6 +236,17 @@ class LocationMeasurementService : Service() {
         currentLocationGeocoder = GoogleReverseGeocoder(this)
         placesFacilitySearcher = GooglePlacesFacilitySearcher(this)
         createNotificationChannel()
+        scope.launch {
+            MeterRuntimeStore.snapshot
+                .map { it.meterState to it.fareYen }
+                .distinctUntilChanged()
+                .collect { (meterState, fareYen) ->
+                val active = meterState == jp.usuiensan.taxijokemeter.domain.meter.MeterState.OCCUPIED
+                if (MeasurementDebugStore.snapshot.value.running) {
+                    updateForegroundNotification(fareYen, active)
+                }
+            }
+        }
         registerImuSensors()
     }
 
@@ -368,15 +384,24 @@ class LocationMeasurementService : Service() {
     }
 
     private fun startForegroundCompat() {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("乗務計測中")
-            .setContentText("GPS走行計測を継続しています")
+        val notification = buildNotification(MeterRuntimeStore.snapshot.value.fareYen, false)
+        if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        else startForeground(NOTIFICATION_ID, notification)
+    }
+
+    private fun updateForegroundNotification(fareYen: Long, liveUpdate: Boolean) {
+        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(fareYen, liveUpdate))
+    }
+
+    private fun buildNotification(fareYen: Long, liveUpdate: Boolean): android.app.Notification {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(if (liveUpdate) fareNotificationText(fareYen) else "乗務計測中")
+            .apply { if (!liveUpdate) setContentText("GPS走行計測を継続しています") }
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
             .setOngoing(true)
-            .build()
-        if (android.os.Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        else startForeground(NOTIFICATION_ID, notification)
+        if (liveUpdate) builder.setRequestPromotedOngoing(true).setShortCriticalText(fareNotificationText(fareYen))
+        return builder.build()
     }
 
     private val imuListener = object : SensorEventListener {

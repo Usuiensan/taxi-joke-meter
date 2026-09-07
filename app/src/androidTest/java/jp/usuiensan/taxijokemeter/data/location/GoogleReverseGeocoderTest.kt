@@ -5,6 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GoogleReverseGeocoderTest {
+    @Test fun formattedAddressKeepsJapaneseTownOrder() {
+        val result = parseGoogleReverseGeocode("""{"results":[{"formattedAddress":"京都府宇治市木幡熊小路","addressComponents":[{"longText":"宇治市","types":["locality"]},{"longText":"熊小路","types":["sublocality_level_1"]},{"longText":"木幡","types":["sublocality_level_2"]}]}]}""")!!
+        assertEquals("宇治市木幡熊小路", result.reportAddress)
+    }
+
     @Test fun routeComponentBecomesRoadName() {
         val result = parseGoogleReverseGeocode("""{"results":[{"formattedAddress":"京都府宇治市○○町1-1","types":["street_address"],"addressComponents":[{"longText":"国道24号","types":["route"]},{"longText":"宇治市","types":["locality"]},{"longText":"○○町","types":["sublocality_level_1"]},{"longText":"1-1","types":["street_number"]}]}]}""")!!
         assertEquals("国道24号", result.roadName)

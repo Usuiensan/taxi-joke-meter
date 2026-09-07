@@ -64,7 +64,7 @@ class GoogleReverseGeocoder(
     private companion object {
         const val TAG = "GoogleReverseGeocoder"
         const val ENDPOINT = "https://geocode.googleapis.com/v4/geocode/location"
-        const val FIELD_MASK = "results.formattedAddress,results.addressComponents,results.types,results.placeId,results.location,results.granularity"
+        const val FIELD_MASK = "results.formattedAddress,results.postalAddress,results.addressComponents,results.types,results.placeId,results.location,results.granularity"
     }
 }
 
@@ -86,13 +86,20 @@ internal fun parseGoogleReverseGeocode(body: String): ReverseGeocodeResult? {
         ?: components.firstOrNull { it.types.any(types::contains) }?.longText
     val route = find("route")
     val municipality = find("locality") ?: find("administrative_area_level_2") ?: find("sublocality_level_1", "sublocality")
-    val town = find("sublocality_level_1", "sublocality", "neighborhood")?.takeUnless { it == municipality }
-    val chome = find("sublocality_level_2")?.takeUnless { it == municipality || it == town }
     val houseNumber = find("street_number")
-    val japaneseParts = listOf(municipality, town, chome, houseNumber).filter { it?.isJapanese() == true || it?.matches(Regex("[0-9０-９-]+")) == true }
-    val reportAddress = japaneseParts.distinct().joinToString("").takeIf(String::isNotBlank)
+    val formattedAddress = result.optString("formattedAddress").takeIf(String::isNotBlank)
+    val postalAddress = result.optJSONObject("postalAddress")
+        ?.optJSONArray("addressLines")
+        ?.let { lines -> buildList { for (index in 0 until lines.length()) lines.optString(index).takeIf(String::isNotBlank)?.let(::add) } }
+        ?.joinToString("")
+        ?.takeIf(String::isNotBlank)
+    val reportAddress = (postalAddress ?: formattedAddress)
+        ?.removeJapanesePrefecture()
+        ?.takeIf { municipality != null }
+        ?.takeIf(String::isJapanese)
+        ?.takeIf(String::isNotBlank)
     return ReverseGeocodeResult(
-        canonicalAddress = result.optString("formattedAddress").takeIf(String::isNotBlank),
+        canonicalAddress = formattedAddress,
         reportAddress = reportAddress,
         landmarkName = null,
         landmarkDetail = null,
@@ -100,16 +107,21 @@ internal fun parseGoogleReverseGeocode(body: String): ReverseGeocodeResult? {
         areaText = reportAddress,
         facilityName = null,
         municipality = municipality,
-        town = town,
-        chome = chome,
+        town = null,
+        chome = null,
         houseNumber = houseNumber,
-        formattedAddress = result.optString("formattedAddress").takeIf(String::isNotBlank),
+        formattedAddress = formattedAddress,
     )
 }
 
 private data class GoogleAddressComponent(val longText: String?, val shortText: String?, val types: Set<String>, val languageCode: String?)
 
 private fun String.isJapanese(): Boolean = any { it in '\u3040'..'\u30ff' || it in '\u3400'..'\u9fff' }
+
+private fun String.removeJapanesePrefecture(): String = trim()
+    .replace(Regex("^(日本[、,\\s]*)"), "")
+    .replace(Regex("^(北海道|東京都|京都府|大阪府|.{2,3}県)"), "")
+    .trim()
 
 private fun certificateSha1(context: Context): String? = runCatching {
     val packageInfo = if (Build.VERSION.SDK_INT >= 28) {

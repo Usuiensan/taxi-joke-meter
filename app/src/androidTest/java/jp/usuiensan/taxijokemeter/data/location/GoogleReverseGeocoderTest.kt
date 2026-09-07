@@ -3,11 +3,23 @@ package jp.usuiensan.taxijokemeter.data.location
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import jp.usuiensan.taxijokemeter.domain.location.reportAddressForAccuracy
 
 class GoogleReverseGeocoderTest {
     @Test fun formattedAddressKeepsJapaneseTownOrder() {
-        val result = parseGoogleReverseGeocode("""{"results":[{"formattedAddress":"京都府宇治市木幡熊小路","addressComponents":[{"longText":"宇治市","types":["locality"]},{"longText":"熊小路","types":["sublocality_level_1"]},{"longText":"木幡","types":["sublocality_level_2"]}]}]}""")!!
+        val result = parseGoogleReverseGeocode("""{"results":[{"formattedAddress":"京都府宇治市木幡熊小路","postalAddress":{"locality":"宇治市","addressLines":["木幡熊小路"]},"addressComponents":[{"longText":"熊小路","types":["sublocality_level_1"]},{"longText":"木幡","types":["sublocality_level_2"]}]}]}""")!!
         assertEquals("宇治市木幡熊小路", result.reportAddress)
+        assertEquals("宇治市", result.municipality)
+        assertNull(result.town)
+        assertNull(result.chome)
+    }
+
+    @Test fun addressLinesProvideMediumAccuracyArea() {
+        val result = parseGoogleReverseGeocode("""{"results":[{"formattedAddress":"京都府宇治市木幡熊小路1-1","postalAddress":{"locality":"宇治市","addressLines":["木幡熊小路1-1"]},"addressComponents":[{"longText":"別の分類名","types":["sublocality_level_1"]}]}]}""")!!
+        assertEquals("宇治市木幡熊小路1-1", result.areaText)
+        assertEquals("宇治市木幡熊小路1-1", reportAddressForAccuracy(result, 30.0))
+        assertEquals("宇治市木幡熊小路1-1", reportAddressForAccuracy(result, 60.0))
+        assertEquals("宇治市", reportAddressForAccuracy(result, 150.0))
     }
 
     @Test fun routeComponentBecomesRoadName() {

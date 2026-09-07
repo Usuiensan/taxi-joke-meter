@@ -85,19 +85,21 @@ internal fun parseGoogleReverseGeocode(body: String): ReverseGeocodeResult? {
     fun find(vararg types: String): String? = components.firstOrNull { it.types.any(types::contains) && it.longText?.isJapanese() == true }?.longText
         ?: components.firstOrNull { it.types.any(types::contains) }?.longText
     val route = find("route")
-    val municipality = find("locality") ?: find("administrative_area_level_2") ?: find("sublocality_level_1", "sublocality")
     val houseNumber = find("street_number")
     val formattedAddress = result.optString("formattedAddress").takeIf(String::isNotBlank)
     val postalAddress = result.optJSONObject("postalAddress")
-        ?.optJSONArray("addressLines")
+    val municipality = postalAddress?.optString("locality")?.takeIf(String::isNotBlank)
+        ?: find("locality") ?: find("administrative_area_level_2") ?: find("sublocality_level_1", "sublocality")
+    val postalLines = postalAddress?.optJSONArray("addressLines")
         ?.let { lines -> buildList { for (index in 0 until lines.length()) lines.optString(index).takeIf(String::isNotBlank)?.let(::add) } }
-        ?.joinToString("")
+        ?.joinToString("")?.removeJapanesePrefecture()?.removePrefix(municipality.orEmpty())
         ?.takeIf(String::isNotBlank)
-    val reportAddress = (postalAddress ?: formattedAddress)
-        ?.removeJapanesePrefecture()
-        ?.takeIf { municipality != null }
-        ?.takeIf(String::isJapanese)
-        ?.takeIf(String::isNotBlank)
+    val postalAddressText = postalLines?.let { listOfNotNull(municipality, it).joinToString("") }
+    val formattedAddressText = formattedAddress?.removeJapanesePrefecture()?.let { address ->
+        if (municipality != null && !address.startsWith(municipality)) municipality + address else address
+    }
+    val reportAddress = (postalAddressText ?: formattedAddressText)
+        ?.takeIf { municipality != null && it.isJapanese() }
     return ReverseGeocodeResult(
         canonicalAddress = formattedAddress,
         reportAddress = reportAddress,

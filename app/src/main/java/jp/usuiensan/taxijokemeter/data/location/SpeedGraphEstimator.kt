@@ -13,10 +13,11 @@ class SpeedGraphEstimator {
     private var lastUpdateNanos: Long? = null
     private var imuSpeedMps: Double? = null
     private var inImuRecovery = false
+    private var gpsRecoveryStartedNanos: Long? = null
 
     fun reset() {
         gpsSpeeds.clear(); filteredSpeedMps = null; quantizedKmh = null
-        lastGpsNanos = null; lastUpdateNanos = null; imuSpeedMps = null; inImuRecovery = false
+        lastGpsNanos = null; lastUpdateNanos = null; imuSpeedMps = null; inImuRecovery = false; gpsRecoveryStartedNanos = null
     }
 
     fun update(timestampNanos: Long, gpsSpeedMps: Double?, imuAccelerationMps2: Double?, imuStable: Boolean): SpeedGraphEstimate {
@@ -28,23 +29,25 @@ class SpeedGraphEstimator {
             val alpha = adaptiveAlpha(imuAccelerationMps2)
             val filtered = if (previous == null) median else previous + alpha * (median - previous)
             val recovering = inImuRecovery
+            val recoveryStarted = if (recovering) gpsRecoveryStartedNanos ?: timestampNanos else null
+            gpsRecoveryStartedNanos = recoveryStarted
+            val recoveryFraction = recoveryStarted?.let { ((timestampNanos - it).coerceAtLeast(0L) / 2e9).coerceIn(0.0, 1.0) }
             filteredSpeedMps = when {
-                !recovering || previous == null -> filtered
+                recoveryFraction == null || previous == null -> filtered
                 abs(gpsSpeedMps - (imuSpeedMps ?: gpsSpeedMps)) > 15.0 / 3.6 -> median
-                else -> {
-                    val recoverySeconds = ((timestampNanos - (lastUpdateNanos ?: timestampNanos)).coerceAtLeast(0L)) / 1e9
-                    previous + (filtered - previous) * (recoverySeconds / 2.0).coerceIn(0.0, 1.0)
-                }
+                else -> (imuSpeedMps ?: previous) + (median - (imuSpeedMps ?: previous)) * recoveryFraction
             }
             lastGpsNanos = timestampNanos
             lastUpdateNanos = timestampNanos
             imuSpeedMps = filteredSpeedMps
-            inImuRecovery = false
+            inImuRecovery = recoveryFraction != null && recoveryFraction < 1.0
+            if (!inImuRecovery) gpsRecoveryStartedNanos = null
             estimate(filteredSpeedMps)
         } else {
             val gpsAge = lastGpsNanos?.let { timestampNanos - it } ?: Long.MAX_VALUE
             if (!imuStable) {
                 inImuRecovery = false
+                gpsRecoveryStartedNanos = null
                 lastUpdateNanos = timestampNanos
                 estimate(null)
             } else if (gpsAge < 1_500_000_000L || filteredSpeedMps == null) {

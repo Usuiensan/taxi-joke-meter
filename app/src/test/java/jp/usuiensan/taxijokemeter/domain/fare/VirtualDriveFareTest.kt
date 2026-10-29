@@ -11,6 +11,7 @@ import jp.usuiensan.taxijokemeter.domain.model.FareRule
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import jp.usuiensan.taxijokemeter.domain.measurement.FareMeasurementMode
 
@@ -18,7 +19,9 @@ class VirtualDriveFareTest {
     @Test
     fun replaysTheFullBundleWithAnExplicitFareRule() {
         val root = System.getenv("VIRTUAL_DRIVE_BUNDLE") ?: "C:/Users/miwam/Downloads/virtual_drive_test_bundle"
-        val rows = File(root, "virtual_drive_1hz.csv").readLines().drop(1).map { it.split(',', limit = 24) }
+        val csv = File(root, "virtual_drive_1hz.csv")
+        assumeTrue("virtual drive bundle is not available", csv.isFile)
+        val rows = csv.readLines().drop(1).map { it.split(',', limit = 24) }
         val rule = FareRule(1_000, 10, 1_000, 10, 10, 360)
         val session = FareMeasurementSession(rule).also { it.begin(OccupancyState.OCCUPIED) }
         var result = session.currentResult()

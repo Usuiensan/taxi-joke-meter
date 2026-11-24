@@ -23,6 +23,7 @@ import jp.usuiensan.taxijokemeter.domain.report.SafetyReportData
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEvent
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSource
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -36,6 +37,25 @@ class ReportPdfGeneratorTest {
     private val receipt = ReceiptData("trip", "2026-09-04", 1, TripStatus.COMPLETED, at, null,
         emptyList(), at.plusSeconds(60), null, 1, 0, 0, 0, 10, FareAdjustmentType.NONE, 0,
         10, emptyList(), emptyList(), 10, 0, 10, null)
+
+    @Test fun safetyPngKeepsA4PortraitAndABottomMarginWithLongDetails() {
+        val place = ReceiptPlaceData("pickup", 0, at, "京都府城陽市寺田正道５４－１０".repeat(10), null)
+        val trip = receipt.copy(pickupPlace = place, dropoffPlace = place)
+        for (trips in listOf(emptyList(), List(14) { trip.copy(tripNumber = it + 1) })) {
+            val report = SafetyReportData.from(at, emptyList(), emptyList(), trips)
+            val png = ByteArrayOutputStream().apply { SafetyReportPngGenerator.write(report, this) }.toByteArray()
+            val bitmap = BitmapFactory.decodeByteArray(png, 0, png.size)
+            try {
+                assertEquals(1240, bitmap.width)
+                assertEquals(1754, bitmap.height)
+                val margin = IntArray(bitmap.width * 40)
+                bitmap.getPixels(margin, 0, bitmap.width, 0, bitmap.height - 40, bitmap.width, 40)
+                assertTrue(margin.all { it == Color.WHITE })
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
 
     @Test fun receiptPngWrapsLongAddressesAndKeepsTheRightMarginClear() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()

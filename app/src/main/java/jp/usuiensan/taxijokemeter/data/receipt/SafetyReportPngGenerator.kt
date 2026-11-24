@@ -26,6 +26,8 @@ object SafetyReportPngGenerator {
 }
 
 private const val WIDTH = 1240
+private const val HEIGHT = 1754
+private const val BOTTOM_MARGIN = 40
 private const val LEFT = 48f
 private const val RIGHT = WIDTH - LEFT
 private const val GRAY = 0xff84919e.toInt()
@@ -75,8 +77,7 @@ private class ReportImage(private val data: SafetyReportData) {
     }
 
     fun write(output: OutputStream) {
-        val details = maxOf(detailHeight(eventRows, data.events.size), detailHeight(tripRows, data.trips.size))
-        val bitmap = Bitmap.createBitmap(WIDTH, detailTop.toInt() + details + 40, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         try {
             canvas = Canvas(bitmap).apply { drawColor(WHITE) }
             drawSummary()
@@ -266,21 +267,23 @@ private class ReportImage(private val data: SafetyReportData) {
         text(title, x + 14f, detailTop + 30f, 23f, bold = true, color = WHITE)
         text("$total 件", right - 14f, detailTop + 30f, 21f, color = WHITE, align = Paint.Align.RIGHT)
         var top = detailTop + 43f
-        rows.forEach { (layout, color) ->
-            if (color != null) rect(x, top + 1f, x + 4f, top + layout.height + 17f, color)
+        var displayed = 0
+        for ((layout, color) in rows) {
+            val nextTop = top + layout.height + 18f
+            val footerHeight = if (displayed + 1 < total) 38f else 0f
+            if (nextTop + footerHeight > HEIGHT - BOTTOM_MARGIN) break
+            if (color != null) rect(x, top + 1f, x + 4f, nextTop - 1f, color)
             canvas.save()
             canvas.translate(x + 14f, top + 8f)
             layout.draw(canvas)
             canvas.restore()
-            top += layout.height + 18f
+            top = nextTop
             rect(x, top - 1f, right, top, LINE)
+            displayed++
         }
-        if (rows.isEmpty()) text("該当なし", x + 14f, top + 30f, 20f)
-        if (total > rows.size) text("ほか %d 件".format(total - rows.size), x + 14f, top + 30f, 20f)
+        if (total == 0) text("該当なし", x + 14f, top + 30f, 20f)
+        if (total > displayed) text("ほか %d 件".format(total - displayed), x + 14f, top + 30f, 20f)
     }
-
-    private fun detailHeight(rows: List<Pair<StaticLayout, Int?>>, total: Int) =
-        43 + rows.sumOf { (layout, _) -> layout.height + 18 } + (if (rows.isEmpty() || total > rows.size) 38 else 0)
 
     private fun detailLayout(value: String): StaticLayout =
         StaticLayout.Builder.obtain(value, 0, value.length, detailPaint, DETAIL_WIDTH - 28).build()

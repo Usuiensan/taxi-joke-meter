@@ -1,5 +1,6 @@
 package jp.usuiensan.taxijokemeter.data.receipt
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -36,10 +37,24 @@ class ReceiptArtifactStore(private val context: Context) {
     fun saveReceiptPng(receipt: ReceiptData, displayName: String): Uri =
         savePngToGallery(displayName) { ReceiptPngRenderer.write(receipt, context, it) }
 
-    fun saveSafetyReportPng(report: SafetyReportData): Uri {
+    fun saveSafetyReportPngs(report: SafetyReportData): ArrayList<Uri> {
         val stamp = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS").withZone(ZoneId.of("Asia/Tokyo"))
             .format(report.generatedAt)
-        return savePngToGallery("safety_report_$stamp.png") { SafetyReportPngGenerator.write(report, it) }
+        val pages = arrayListOf<Uri>()
+        try {
+            SafetyReportPngGenerator.renderPages(report) { page, bitmap ->
+                val number = page.toString().padStart(2, '0')
+                pages += savePngToGallery("safety_report_${stamp}_p$number.png") { output ->
+                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+                }
+            }
+            return pages
+        } catch (e: Exception) {
+            pages.forEach { uri ->
+                runCatching { context.contentResolver.delete(uri, null, null) }.onFailure(e::addSuppressed)
+            }
+            throw e
+        }
     }
 
     private fun savePngToGallery(displayName: String, write: (OutputStream) -> Unit): Uri {
@@ -76,7 +91,18 @@ class ReceiptArtifactStore(private val context: Context) {
         MediaScannerConnection.scanFile(context, arrayOf(target.path), arrayOf("image/png"), null)
         return uri(target)
     }
-    fun shareSafetyReport(report: SafetyReportData): Intent = shareUri(saveSafetyReportPng(report), "image/png")
+    fun shareSafetyReport(report: SafetyReportData): Intent {
+        val pages = saveSafetyReportPngs(report)
+        if (pages.size == 1) return shareUri(pages.single(), "image/png")
+        return Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "image/png"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, pages)
+            clipData = ClipData("安全運転レポート", arrayOf("image/png"), ClipData.Item(pages.first())).apply {
+                pages.drop(1).forEach { addItem(ClipData.Item(it)) }
+            }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
     fun share(file: File, mimeType: String): Intent = shareUri(uri(file), mimeType)
 
     private fun shareUri(uri: Uri, mimeType: String): Intent = Intent(Intent.ACTION_SEND).apply {

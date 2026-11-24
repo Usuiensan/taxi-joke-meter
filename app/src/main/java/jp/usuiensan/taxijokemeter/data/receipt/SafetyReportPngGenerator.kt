@@ -14,7 +14,6 @@ import jp.usuiensan.taxijokemeter.domain.report.ReceiptData
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptPlaceData
 import jp.usuiensan.taxijokemeter.domain.report.SafetyReportData
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
-import java.io.OutputStream
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -22,7 +21,8 @@ import java.util.Locale
 import kotlin.math.ceil
 
 object SafetyReportPngGenerator {
-    internal fun write(data: SafetyReportData, output: OutputStream) = ReportImage(data).write(output)
+    internal fun renderPages(data: SafetyReportData, onPage: (Int, Bitmap) -> Unit) =
+        ReportImage(data).renderPages(onPage)
 }
 
 private const val WIDTH = 1240
@@ -37,7 +37,6 @@ private const val BLACK = 0xff000000.toInt()
 private const val BLUE = 0xff005aff.toInt()
 private const val PALE_BLUE = 0xffbfe4ff.toInt()
 private const val DETAIL_WIDTH = 560
-private const val DETAIL_LIMIT = 14
 
 private val JST = ZoneId.of("Asia/Tokyo")
 private val DATE_TIME = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss").withZone(JST)
@@ -54,21 +53,22 @@ private enum class Warning(val type: SafetyEventType, val label: String, val col
     OVERSPEED(SafetyEventType.OVERSPEED, "速度超過", 0xfff6aa00.toInt(), "km/h 超過"),
 }
 
+private class DetailPosition(var row: Int = 0, var line: Int = 0)
+
 private class ReportImage(private val data: SafetyReportData) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private lateinit var canvas: Canvas
     private val detailPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = BLACK; textSize = 20f }
     private val start = data.samples.firstOrNull()?.timestamp?.toEpochMilli() ?: 0L
     private val end = data.samples.lastOrNull()?.timestamp?.toEpochMilli() ?: start
-    private val detailTop = if (end > start) 945f else 564f
 
-    private val eventRows = data.events.take(DETAIL_LIMIT).map { event ->
+    private val eventRows = data.events.map { event ->
         val warning = Warning.entries.first { it.type == event.type }
         val range = listOf(event.startedAtEpochMillis, event.endedAtEpochMillis)
             .joinToString(" – ") { it?.let { millis -> TIME.format(Instant.ofEpochMilli(millis)) } ?: "—" }
         detailLayout("%s   %s   %.1f %s".format(warning.label, range, event.peakValue, warning.unit)) to warning.color
     }
-    private val tripRows = data.trips.take(DETAIL_LIMIT).map { trip ->
+    private val tripRows = data.trips.map { trip ->
         val times = MINUTE.format(trip.pickupAt) + " – " + (trip.dropoffAt?.let(MINUTE::format) ?: "—")
         detailLayout("No.%s   %s    %d 人    %s\n乗車  %s\n降車  %s".format(
             trip.tripNumber ?: "—", times, trip.passengerCount, yen(trip.totalFareYen),
@@ -76,24 +76,45 @@ private class ReportImage(private val data: SafetyReportData) {
         )) to null
     }
 
-    fun write(output: OutputStream) {
+    fun renderPages(onPage: (Int, Bitmap) -> Unit) {
+        val events = DetailPosition()
+        val trips = DetailPosition()
+        var page = 1
         val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         try {
-            canvas = Canvas(bitmap).apply { drawColor(WHITE) }
-            drawSummary()
-            drawGraph()
-            drawDetails(LEFT, "安全イベント明細", eventRows, data.events.size)
-            drawDetails(RIGHT - DETAIL_WIDTH, "実車営業明細", tripRows, data.trips.size)
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            canvas = Canvas(bitmap)
+            do {
+                canvas.drawColor(WHITE)
+                drawHeader(page)
+                val firstPage = page == 1
+                val detailTop = if (!firstPage) 143f else if (end > start) 945f else 564f
+                if (firstPage) {
+                    drawSummary()
+                    drawGraph()
+                }
+                val suffix = if (firstPage) "" else "（続き）"
+                if (firstPage || events.row < eventRows.size) {
+                    drawDetails(LEFT, detailTop, "安全イベント明細$suffix", eventRows, events)
+                }
+                if (firstPage || trips.row < tripRows.size) {
+                    drawDetails(RIGHT - DETAIL_WIDTH, detailTop, "実車営業明細$suffix", tripRows, trips)
+                }
+                onPage(page, bitmap)
+                page++
+            } while (events.row < eventRows.size || trips.row < tripRows.size)
         } finally {
             bitmap.recycle()
         }
     }
 
-    private fun drawSummary() {
+    private fun drawHeader(page: Int) {
         rect(LEFT, 34f, RIGHT, 40f, BLUE)
         text("安全運転レポート", LEFT, 94f, 42f, bold = true)
         text("作成  " + DATE_TIME.format(data.generatedAt), RIGHT, 89f, 21f, align = Paint.Align.RIGHT)
+        text("第 $page ページ", RIGHT, 113f, 18f, align = Paint.Align.RIGHT)
+    }
+
+    private fun drawSummary() {
         val metrics = listOf(
             "総走行距離" to "%.3f km".format(data.distanceKm()),
             "営業件数" to "%d 件".format(data.trips.size),
@@ -261,28 +282,43 @@ private class ReportImage(private val data: SafetyReportData) {
         paint.pathEffect = null
     }
 
-    private fun drawDetails(x: Float, title: String, rows: List<Pair<StaticLayout, Int?>>, total: Int) {
+    private fun drawDetails(
+        x: Float, detailTop: Float, title: String, rows: List<Pair<StaticLayout, Int?>>, position: DetailPosition,
+    ) {
         val right = x + DETAIL_WIDTH
         rect(x, detailTop, right, detailTop + 43f, BLACK)
         text(title, x + 14f, detailTop + 30f, 23f, bold = true, color = WHITE)
-        text("$total 件", right - 14f, detailTop + 30f, 21f, color = WHITE, align = Paint.Align.RIGHT)
-        var top = detailTop + 43f
-        var displayed = 0
-        for ((layout, color) in rows) {
-            val nextTop = top + layout.height + 18f
-            val footerHeight = if (displayed + 1 < total) 38f else 0f
-            if (nextTop + footerHeight > HEIGHT - BOTTOM_MARGIN) break
+        text("${rows.size} 件", right - 14f, detailTop + 30f, 21f, color = WHITE, align = Paint.Align.RIGHT)
+        val firstRowTop = detailTop + 43f
+        var top = firstRowTop
+        while (position.row < rows.size) {
+            val (layout, color) = rows[position.row]
+            val lineTop = layout.getLineTop(position.line)
+            val available = HEIGHT - BOTTOM_MARGIN - top - 18f
+            if (layout.height - lineTop > available && top != firstRowTop) break
+            var endLine = position.line
+            while (endLine < layout.lineCount && layout.getLineTop(endLine + 1) - lineTop <= available) {
+                endLine++
+            }
+            if (endLine == position.line) break
+            val lineHeight = layout.getLineTop(endLine) - lineTop
+            val nextTop = top + lineHeight + 18f
             if (color != null) rect(x, top + 1f, x + 4f, nextTop - 1f, color)
             canvas.save()
-            canvas.translate(x + 14f, top + 8f)
+            canvas.clipRect(x, top + 8f, right, top + 8f + lineHeight)
+            canvas.translate(x + 14f, top + 8f - lineTop)
             layout.draw(canvas)
             canvas.restore()
             top = nextTop
             rect(x, top - 1f, right, top, LINE)
-            displayed++
+            if (endLine < layout.lineCount) {
+                position.line = endLine
+                break
+            }
+            position.row++
+            position.line = 0
         }
-        if (total == 0) text("該当なし", x + 14f, top + 30f, 20f)
-        if (total > displayed) text("ほか %d 件".format(total - displayed), x + 14f, top + 30f, 20f)
+        if (rows.isEmpty()) text("該当なし", x + 14f, top + 30f, 20f)
     }
 
     private fun detailLayout(value: String): StaticLayout =

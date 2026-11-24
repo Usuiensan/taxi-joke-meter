@@ -23,7 +23,6 @@ import jp.usuiensan.taxijokemeter.domain.report.SafetyReportData
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEvent
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventSource
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -41,18 +40,30 @@ class ReportPdfGeneratorTest {
     @Test fun safetyPngKeepsA4PortraitAndABottomMarginWithLongDetails() {
         val place = ReceiptPlaceData("pickup", 0, at, "京都府城陽市寺田正道５４－１０".repeat(10), null)
         val trip = receipt.copy(pickupPlace = place, dropoffPlace = place)
-        for (trips in listOf(emptyList(), List(14) { trip.copy(tripNumber = it + 1) })) {
+        val oversizedTrip = trip.copy(pickupPlace = place.copy(address = checkNotNull(place.address).repeat(20)))
+        for (trips in listOf(emptyList(), List(14) { trip.copy(tripNumber = it + 1) }, listOf(oversizedTrip))) {
             val report = SafetyReportData.from(at, emptyList(), emptyList(), trips)
-            val png = ByteArrayOutputStream().apply { SafetyReportPngGenerator.write(report, this) }.toByteArray()
-            val bitmap = BitmapFactory.decodeByteArray(png, 0, png.size)
-            try {
+            var pages = 0
+            var tripRows = 0
+            SafetyReportPngGenerator.renderPages(report) { page, bitmap ->
+                assertEquals(++pages, page)
                 assertEquals(1240, bitmap.width)
                 assertEquals(1754, bitmap.height)
                 val margin = IntArray(bitmap.width * 40)
                 bitmap.getPixels(margin, 0, bitmap.width, 0, bitmap.height - 40, bitmap.width, 40)
                 assertTrue(margin.all { it == Color.WHITE })
-            } finally {
-                bitmap.recycle()
+                val firstDetailRow = if (page == 1) 607 else 186
+                tripRows += (firstDetailRow until bitmap.height).count { y ->
+                    bitmap.getPixel(633, y) == 0xffc8c8cb.toInt()
+                }
+            }
+            when (trips.size) {
+                0 -> assertEquals(1, pages)
+                1 -> assertTrue(pages > 1 && tripRows == pages)
+                else -> {
+                    assertTrue(pages > 1)
+                    assertEquals(trips.size, tripRows)
+                }
             }
         }
     }
@@ -72,6 +83,54 @@ class ReportPdfGeneratorTest {
         } finally {
             short.recycle()
             long.recycle()
+        }
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 29)
+    fun safetyShareIncludesEveryA4PageInOrder() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val warning = SafetyEvent(0, SafetyEventType.HARD_DECELERATION, 20_000, 60_000,
+            at.toEpochMilli() + 20_000, at.toEpochMilli() + 60_000, 3.5,
+            RoadMode.GENERAL, SafetyEventSource.IMU)
+        val events = List(50) { warning.copy(id = it.toLong()) }
+        val report = SafetyReportData.from(at, emptyList(), events, emptyList())
+        val intent = ReceiptArtifactStore(context).shareSafetyReport(report)
+        val resolver = context.contentResolver
+        val uris = if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            checkNotNull(IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+        } else {
+            listOf(checkNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)))
+        }
+        try {
+            assertEquals(Intent.ACTION_SEND_MULTIPLE, intent.action)
+            assertTrue(uris.size > 1)
+            val clipData = checkNotNull(intent.clipData)
+            assertEquals(uris, (0 until clipData.itemCount).map { clipData.getItemAt(it).uri })
+            var renderedEvents = 0
+            uris.forEachIndexed { index, uri ->
+                val columns = arrayOf(MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.IS_PENDING)
+                checkNotNull(resolver.query(uri, columns, null, null, null)).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    val page = (index + 1).toString().padStart(2, '0')
+                    assertTrue(cursor.getString(0).endsWith("_p$page.png"))
+                    assertEquals(0, cursor.getInt(1))
+                }
+                val bitmap = checkNotNull(resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) })
+                try {
+                    assertEquals(1240, bitmap.width)
+                    assertEquals(1754, bitmap.height)
+                    val red = 0xffff4b00.toInt()
+                    renderedEvents += (1 until bitmap.height).count { y ->
+                        bitmap.getPixel(49, y) == red && bitmap.getPixel(49, y - 1) != red
+                    }
+                } finally {
+                    bitmap.recycle()
+                }
+            }
+            assertEquals(events.size, renderedEvents)
+        } finally {
+            uris.forEach { resolver.delete(it, null, null) }
         }
     }
 

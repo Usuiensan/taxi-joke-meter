@@ -316,7 +316,7 @@ class MeterController internal constructor(
                 artifacts.saveReceiptPng(receipt, "receipt_${stamp}.png")
                 val samples = DrivingSampleRepository(db).findByDutySessionId(receipt.dutySessionId)
                 val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                artifacts.saveSafetyReportPng(jp.usuiensan.taxijokemeter.domain.report.SafetyReportData.from(java.time.Instant.now(), samples, events, ReceiptRepository(db).findForSession(receipt.dutySessionId)))
+                artifacts.saveSafetyReportPngs(jp.usuiensan.taxijokemeter.domain.report.SafetyReportData.from(java.time.Instant.now(), samples, events, ReceiptRepository(db).findForSession(receipt.dutySessionId)))
             }
         } finally { db.close() }
         trip = null

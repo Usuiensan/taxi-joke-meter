@@ -1,0 +1,42 @@
+name: Release APK
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+      - name: Sign APK
+        env:
+          KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          UNSIGNED=$(ls app/build/outputs/apk/release/*unsigned*.apk | head -1)
+          echo "signing $UNSIGNED with build-tools $BUILD_TOOLS"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" "$RUNNER_TEMP/aligned.apk"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" sign --ks signing/keystore.p12 --ks-type PKCS12 --ks-key-alias taxijokemeter --ks-pass pass:"$KS_PASS" --key-pass pass:"$KEY_PASS" --out "$RUNNER_TEMP/taxi-joke-meter.apk" "$RUNNER_TEMP/aligned.apk"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify "$RUNNER_TEMP/taxi-joke-meter.apk"
+      - name: Read versionName
+        id: ver
+        run: echo "name=$(grep -oP 'versionName\s*=\s*\"\K[^\"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.name }}.${{ github.run_number }}
+          name: v${{ steps.ver.outputs.name }}.${{ github.run_number }}
+          files: ${{ runner.temp }}/taxi-joke-meter.apk

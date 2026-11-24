@@ -313,10 +313,10 @@ class MeterController internal constructor(
                 val receipt = ReceiptRepository(db).findById(completed.id) ?: return@runCatching
                 val stamp = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Tokyo"))
                     .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"))
-                artifacts.savePngToGallery(artifacts.writePng(receipt), "receipt_${stamp}.png")
+                artifacts.saveReceiptPng(receipt, "receipt_${stamp}.png")
                 val samples = DrivingSampleRepository(db).findByDutySessionId(receipt.dutySessionId)
                 val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                artifacts.savePngToGallery(artifacts.writeSafetyReportPng(jp.usuiensan.taxijokemeter.domain.report.SafetyReportData.from(java.time.Instant.now(), samples, events, ReceiptRepository(db).findForSession(receipt.dutySessionId))), "safety_report_${stamp}.png")
+                artifacts.saveSafetyReportPng(jp.usuiensan.taxijokemeter.domain.report.SafetyReportData.from(java.time.Instant.now(), samples, events, ReceiptRepository(db).findForSession(receipt.dutySessionId)))
             }
         } finally { db.close() }
         trip = null

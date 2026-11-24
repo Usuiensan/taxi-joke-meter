@@ -101,6 +101,23 @@ fun AppShell() {
         if (hasLocationPermission(context) && locationManager.isLocationEnabled) meterController.resumeLocation()
     }
     val requestNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    var pendingReport by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val requestPhotoPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val report = pendingReport
+        pendingReport = null
+        if (granted) report?.invoke()
+        else Toast.makeText(context, "レポートの保存にはストレージへのアクセス許可が必要です", Toast.LENGTH_SHORT).show()
+    }
+    val saveReport: (() -> Unit) -> Unit = { report ->
+        if (android.os.Build.VERSION.SDK_INT < 29 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingReport = report
+            requestPhotoPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            report()
+        }
+    }
     LaunchedEffect(showMeter) {
         if (showMeter && android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -146,8 +163,26 @@ fun AppShell() {
         when {
             showSettings -> FareRuleSettingsScreen(padding) { showSettings = false; showMeter = true }
             showDebug -> MeasurementDebugScreen(padding, { showMeter = true; showDebug = false }, openFareSettings)
-            showReissue -> ReissueScreen(padding) { showReissue = false; showMeter = true }
-            showMeter -> MeterScreen(padding, meterRuntime, meterController, openFareSettings, { showDebug = true; showMeter = false }, { showReissue = true; showMeter = false }, locationAccess, { locationPreferences.edit().putBoolean("location_permission_requested_once", true).apply(); requestLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) }, openAppSettings, openLocationSettings, { shareLatest(context, false) }, { shareLatest(context, true) }, { shareTodayReport(context) })
+            showReissue -> ReissueScreen(
+                padding, onReport = { id -> saveReport { shareReport(context, id) } },
+                onBack = { showReissue = false; showMeter = true },
+            )
+            showMeter -> MeterScreen(
+                padding, meterRuntime, meterController,
+                onOpenFareSettings = openFareSettings,
+                onOpenDebug = { showDebug = true; showMeter = false },
+                onOpenReissue = { showReissue = true; showMeter = false },
+                locationAccess = locationAccess,
+                onRequestLocationPermission = {
+                    locationPreferences.edit().putBoolean("location_permission_requested_once", true).apply()
+                    requestLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                },
+                onOpenAppSettings = openAppSettings,
+                onOpenLocationSettings = openLocationSettings,
+                onShareReceipt = { shareLatest(context, false) },
+                onShareSafetyReport = { saveReport { shareLatest(context, true) } },
+                onOpenReport = { saveReport { shareReport(context) } },
+            )
             else -> MeterScreen(padding, meterRuntime, meterController)
         }
     }
@@ -173,7 +208,7 @@ private fun shareLatest(context: Context, safety: Boolean) {
                                 if (!safety) artifacts.share(artifacts.writePng(it), "image/png") else {
                                     val samples = DrivingSampleRepository(db).findByDutySessionId(id)
                                     val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                                    artifacts.share(artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, receipts.findForSession(id))), "image/png")
+                                    artifacts.shareSafetyReport(SafetyReportData.from(java.time.Instant.now(), samples, events, receipts.findForSession(id)))
                                 }
                             }
                         } finally { db.close() }
@@ -200,38 +235,41 @@ private fun shareLatest(context: Context, safety: Boolean) {
     }
 }
 
-private fun shareTodayReport(context: Context) {
+private fun shareReport(context: Context, dutySessionId: String? = null) {
     val scope = kotlinx.coroutines.CoroutineScope(Dispatchers.Main)
     scope.launch {
-        val result = withContext(Dispatchers.IO) {
-            val db = DutyDatabase.build(context)
-            try {
-                val receipts = ReceiptRepository(db)
-                val date = LocalDate.now(ZoneId.of("Asia/Tokyo"))
-                val session = MeterRuntimeStore.snapshot.value.dutySessionId
-                    ?: receipts.findForServiceDate(date.toString()).lastOrNull()?.dutySessionId
-                    ?: return@withContext null
-                val samples = DrivingSampleRepository(db).findByDutySessionId(session)
-                val trips = receipts.findForSession(session)
-                if (samples.isEmpty() && trips.isEmpty()) return@withContext null
-                val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start ->
-                    samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end ->
-                        SafetyEventRepository(db).getEventsBetween(start, end + 1_000)
-                    }
-                } ?: emptyList()
-                val artifacts = ReceiptArtifactStore(context)
-                val file = artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, trips))
-                val name = "safety_report_${date.toString().replace("-", "")}_${System.currentTimeMillis()}.png"
-                artifacts.shareUri(artifacts.savePngToGallery(file, name), "image/png")
-            } finally { db.close() }
+        try {
+            val result = withContext(Dispatchers.IO) {
+                val db = DutyDatabase.build(context)
+                try {
+                    val receipts = ReceiptRepository(db)
+                    val date = LocalDate.now(ZoneId.of("Asia/Tokyo"))
+                    val session = dutySessionId ?: MeterRuntimeStore.snapshot.value.dutySessionId
+                        ?: receipts.findForServiceDate(date.toString()).lastOrNull()?.dutySessionId
+                        ?: return@withContext null
+                    val samples = DrivingSampleRepository(db).findByDutySessionId(session)
+                    val trips = receipts.findForSession(session)
+                    if (samples.isEmpty() && trips.isEmpty()) return@withContext null
+                    val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start ->
+                        samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end ->
+                            SafetyEventRepository(db).getEventsBetween(start, end + 1_000)
+                        }
+                    } ?: emptyList()
+                    ReceiptArtifactStore(context).shareSafetyReport(SafetyReportData.from(java.time.Instant.now(), samples, events, trips))
+                } finally { db.close() }
+            }
+            val title = if (dutySessionId == null) "今日の安全運転レポートを共有" else "安全運転レポートを共有"
+            result?.let { context.startActivity(Intent.createChooser(it, title)) }
+                ?: Toast.makeText(context, "レポートデータがありません", Toast.LENGTH_SHORT).show()
+        } catch (exception: Exception) {
+            Log.e(TAG, "安全運転レポートの保存・共有に失敗", exception)
+            Toast.makeText(context, "安全運転レポートの保存・共有に失敗しました", Toast.LENGTH_SHORT).show()
         }
-        result?.let { context.startActivity(Intent.createChooser(it, "今日の安全運転レポートを共有")) }
-            ?: Toast.makeText(context, "今日のレポートデータがありません", Toast.LENGTH_SHORT).show()
     }
 }
 
 @Composable
-private fun ReissueScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, onBack: () -> Unit) {
+private fun ReissueScreen(contentPadding: androidx.compose.foundation.layout.PaddingValues, onReport: (String) -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     var date by remember { mutableStateOf(LocalDate.now(ZoneId.of("Asia/Tokyo"))) }
     var receipts by remember { mutableStateOf<List<ReceiptData>>(emptyList()) }
@@ -257,20 +295,7 @@ private fun ReissueScreen(contentPadding: androidx.compose.foundation.layout.Pad
             Text(ReceiptTextRenderer.render(receipt))
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { val file = artifacts.writeText(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "text/plain"), "TXT共有")) }, modifier = Modifier.fillMaxWidth()) { Text("TXT共有") }
-                Button(onClick = { scope.launch {
-                    runCatching {
-                        val file = withContext(Dispatchers.IO) {
-                            val db = DutyDatabase.build(context)
-                            try {
-                                val trips = ReceiptRepository(db).findForSession(receipt.dutySessionId)
-                                val samples = DrivingSampleRepository(db).findByDutySessionId(receipt.dutySessionId)
-                                val events = samples.minOfOrNull { it.timestamp.toEpochMilli() }?.let { start -> samples.maxOfOrNull { it.timestamp.toEpochMilli() }?.let { end -> SafetyEventRepository(db).getEventsBetween(start, end + 1_000) } } ?: emptyList()
-                                artifacts.writeSafetyReportPng(SafetyReportData.from(java.time.Instant.now(), samples, events, trips))
-                            } finally { db.close() }
-                        }
-                        context.startActivity(Intent.createChooser(artifacts.share(file, "image/png"), "安全運転レポートを共有"))
-                    }
-                } }, modifier = Modifier.fillMaxWidth()) { Text("安全運転レポート") }
+                Button(onClick = { onReport(receipt.dutySessionId) }, modifier = Modifier.fillMaxWidth()) { Text("安全運転レポート") }
                 Button(onClick = { scope.launch { runCatching { val file = withContext(Dispatchers.IO) { artifacts.writePdf(receipt) }; context.startActivity(Intent.createChooser(artifacts.share(file, "application/pdf"), "走行レシートを共有")) } } }, modifier = Modifier.fillMaxWidth()) { Text("走行レシート") }
                 Button(onClick = { context.startActivity(artifacts.view(artifacts.writePng(receipt))) }, modifier = Modifier.fillMaxWidth()) { Text("PNG表示") }
                 Button(onClick = { val file = artifacts.writePng(receipt); context.startActivity(Intent.createChooser(artifacts.share(file, "image/png"), "PNG共有")) }, modifier = Modifier.fillMaxWidth()) { Text("PNG共有") }

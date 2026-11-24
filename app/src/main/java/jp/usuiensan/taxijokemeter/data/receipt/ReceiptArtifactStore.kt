@@ -4,28 +4,45 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Paint
+import android.graphics.Color
 import android.graphics.Typeface
 import android.content.ContentValues
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.text.StaticLayout
+import android.text.TextPaint
 import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptData
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptTextRenderer
 import jp.usuiensan.taxijokemeter.domain.report.SafetyReportData
 import java.io.File
+import java.io.OutputStream
 import java.nio.charset.StandardCharsets
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.math.ceil
 
 class ReceiptArtifactStore(private val context: Context) {
     fun writeText(receipt: ReceiptData): File = file(receipt, "txt").also { it.writeText(ReceiptTextRenderer.render(receipt), StandardCharsets.UTF_8) }
-    fun writePng(receipt: ReceiptData): File = file(receipt, "png").also { ReceiptPngRenderer.render(receipt, context).compress(Bitmap.CompressFormat.PNG, 100, it.outputStream()) }
+    fun writePng(receipt: ReceiptData): File = file(receipt, "png").also { target ->
+        target.outputStream().use { ReceiptPngRenderer.write(receipt, context, it) }
+    }
     fun writePdf(receipt: ReceiptData): File = file(receipt, "pdf").also { ReceiptPdfGenerator.write(receipt, it) }
     fun writeSafetyReportPdf(report: SafetyReportData): File = File(File(context.cacheDir, "receipts").apply(File::mkdirs), "safety_report_${report.generatedAt.atZone(java.time.ZoneId.of("Asia/Tokyo")).toLocalDate().toString().replace("-", "")}_${report.trips.firstOrNull()?.tripNumber ?: 0}.pdf").also { SafetyReportPdfGenerator.write(report, it) }
-    fun writeSafetyReportPng(report: SafetyReportData): File = File(File(context.cacheDir, "receipts").apply(File::mkdirs), "safety_report_${report.generatedAt.atZone(java.time.ZoneId.of("Asia/Tokyo")).toLocalDate().toString().replace("-", "")}_${report.trips.firstOrNull()?.tripNumber ?: 0}.png").also { SafetyReportPngGenerator.write(report, it) }
-    fun savePngToGallery(file: File, displayName: String): Uri {
+    fun saveReceiptPng(receipt: ReceiptData, displayName: String): Uri =
+        savePngToGallery(displayName) { ReceiptPngRenderer.write(receipt, context, it) }
+
+    fun saveSafetyReportPng(report: SafetyReportData): Uri {
+        val stamp = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS").withZone(ZoneId.of("Asia/Tokyo"))
+            .format(report.generatedAt)
+        return savePngToGallery("safety_report_$stamp.png") { SafetyReportPngGenerator.write(report, it) }
+    }
+
+    private fun savePngToGallery(displayName: String, write: (OutputStream) -> Unit): Uri {
         val resolver = context.contentResolver
         if (Build.VERSION.SDK_INT >= 29) {
             val values = ContentValues().apply {
@@ -34,18 +51,37 @@ class ReceiptArtifactStore(private val context: Context) {
                 put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/TaxiJokeMeter")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
-            val uri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
-            try { resolver.openOutputStream(uri).use { output -> file.inputStream().use { it.copyTo(requireNotNull(output)) } }; values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0); resolver.update(uri, values, null, null); return uri }
-            catch (e: Exception) { resolver.delete(uri, null, null); throw e }
+            val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = checkNotNull(resolver.insert(collection, values))
+            try {
+                checkNotNull(resolver.openOutputStream(uri)).use(write)
+                val published = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+                check(resolver.update(uri, published, null, null) == 1)
+                return uri
+            } catch (e: Exception) {
+                runCatching { resolver.delete(uri, null, null) }.onFailure(e::addSuppressed)
+                throw e
+            }
         }
-        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "TaxiJokeMeter").apply(File::mkdirs)
-        val target = File(dir, displayName); file.copyTo(target, overwrite = false)
-        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "TaxiJokeMeter")
+        dir.mkdirs()
+        val target = File(dir, displayName)
+        check(target.createNewFile())
+        try {
+            target.outputStream().use(write)
+        } catch (e: Exception) {
+            target.delete()
+            throw e
+        }
+        MediaScannerConnection.scanFile(context, arrayOf(target.path), arrayOf("image/png"), null)
+        return uri(target)
     }
-    fun shareUri(uri: Uri, mimeType: String): Intent = Intent(Intent.ACTION_SEND).apply { type = mimeType; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-    fun share(file: File, mimeType: String): Intent = Intent(Intent.ACTION_SEND).apply {
+    fun shareSafetyReport(report: SafetyReportData): Intent = shareUri(saveSafetyReportPng(report), "image/png")
+    fun share(file: File, mimeType: String): Intent = shareUri(uri(file), mimeType)
+
+    private fun shareUri(uri: Uri, mimeType: String): Intent = Intent(Intent.ACTION_SEND).apply {
         type = mimeType
-        putExtra(Intent.EXTRA_STREAM, uri(file))
+        putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     fun view(file: File): Intent = Intent(Intent.ACTION_VIEW).apply {
@@ -60,18 +96,31 @@ class ReceiptArtifactStore(private val context: Context) {
 }
 
 object ReceiptPngRenderer {
-    fun render(receipt: ReceiptData, context: Context? = null): Bitmap {
-        val lines = ReceiptTextRenderer.render(receipt).lines()
-        val width = 384
-        val lineHeight = 30
-        val bitmap = Bitmap.createBitmap(width, (lines.size * lineHeight + 32).coerceAtLeast(128), Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap).apply { drawColor(android.graphics.Color.WHITE) }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; textSize = 20f; typeface = context?.let { ResourcesCompat.getFont(it, jp.usuiensan.taxijokemeter.R.font.receipt_biz_udgothic_regular) } ?: Typeface.MONOSPACE }
-        lines.forEachIndexed { index, line ->
-            val y = 25f + index * lineHeight
-            val x = if (line.contains("円")) (width - 12f - paint.measureText(line)).coerceAtLeast(8f) else 12f
-            canvas.drawText(line, x, y, paint)
+    fun write(receipt: ReceiptData, context: Context, output: OutputStream) {
+        val bitmap = render(receipt, context)
+        try {
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+        } finally {
+            bitmap.recycle()
         }
+    }
+
+    fun render(receipt: ReceiptData, context: Context? = null): Bitmap {
+        val font = context?.let { ResourcesCompat.getFont(it, jp.usuiensan.taxijokemeter.R.font.receipt_biz_udgothic_regular) }
+        val layout = receiptLayout(receipt, 20f, font ?: Typeface.MONOSPACE)
+        val bitmap = Bitmap.createBitmap(layout.width + 24, layout.height + 24, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap).apply { drawColor(Color.WHITE); translate(12f, 12f) }
+        layout.draw(canvas)
         return bitmap
     }
+}
+
+internal fun receiptLayout(receipt: ReceiptData, size: Float, font: Typeface): StaticLayout {
+    val text = ReceiptTextRenderer.render(receipt)
+    val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = size; typeface = font }
+    val divider = text.lineSequence().first { it.startsWith("-----") }
+    val width = ceil(paint.measureText(divider) + size).toInt()
+    return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+        .setLineSpacing(size / 5, 1f)
+        .build()
 }

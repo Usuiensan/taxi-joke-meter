@@ -4,15 +4,12 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
-import android.graphics.Bitmap
 import android.graphics.pdf.PdfDocument
 import jp.usuiensan.taxijokemeter.domain.model.RoadMode
 import jp.usuiensan.taxijokemeter.domain.report.ReceiptData
-import jp.usuiensan.taxijokemeter.domain.report.ReceiptTextRenderer
 import jp.usuiensan.taxijokemeter.domain.report.SafetyReportData
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyEvaluation
 import jp.usuiensan.taxijokemeter.domain.safety.SafetyRank
-import jp.usuiensan.taxijokemeter.domain.safety.SafetyEventType
 import java.io.File
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -53,7 +50,7 @@ object SafetyReportPdfGenerator {
             if (data.trips.isEmpty()) report.line("該当なし") else { val widths = floatArrayOf(24f, 42f, 42f, 130f, 130f, 28f, 55f, 88f); report.tableRow(listOf("No.", "乗車", "降車", "乗車地", "降車地", "人", "実車km", "運賃"), widths, true); data.trips.forEachIndexed { i, trip -> report.tableRow(listOf("${i + 1}", shortTime(trip.pickupAt), shortTime(trip.dropoffAt), place(trip.pickupPlace?.address), place(trip.dropoffPlace?.address), "${trip.passengerCount}", "%.3f".format(trip.actualDistanceMeters / 1000.0), "${trip.totalFareYen}円"), widths, false, true) } }
             report.line("集計  実車${data.trips.size}回  人員${data.trips.sumOf(ReceiptData::passengerCount)}人  実車%.3fkm  ${data.trips.sumOf(ReceiptData::totalFareYen)}円".format(data.trips.sumOf(ReceiptData::actualDistanceMeters) / 1000.0))
             report.finish()
-            pdf.writeTo(file.outputStream())
+            file.outputStream().use(pdf::writeTo)
         } finally { pdf.close() }
     }
 
@@ -86,54 +83,18 @@ private class ReportCanvas(private val pdf: PdfDocument, private val data: Safet
 }
 
 object ReceiptPdfGenerator {
-    fun write(receipt: ReceiptData, file: File) { val pdf = PdfDocument(); try { val lines = ReceiptTextRenderer.render(receipt).lines(); val page = pdf.startPage(PdfDocument.PageInfo.Builder(165, max(180, 32 + lines.size * 16), 1).create()); val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; textSize = 9f; typeface = Typeface.MONOSPACE }; lines.forEachIndexed { i, line -> page.canvas.drawText(line, 8f, 18f + i * 16f, paint) }; pdf.finishPage(page); pdf.writeTo(file.outputStream()) } finally { pdf.close() } }
-}
-
-/** A4 portrait PNG renderer; intentionally independent from Compose so exports are stable. */
-object SafetyReportPngGenerator {
-    private const val W = 1240
-    private const val H = 1754
-    private const val LEFT = 70f
-    private const val RIGHT = 1170f
-    private const val TOP = 70f
-    fun write(data: SafetyReportData, file: File) {
-        val bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
+    fun write(receipt: ReceiptData, file: File) {
+        val layout = receiptLayout(receipt, 9f, Typeface.MONOSPACE)
+        val width = layout.width + 16
+        val pdf = PdfDocument()
         try {
-            val canvas = Canvas(bitmap).apply { drawColor(android.graphics.Color.WHITE) }
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK; typeface = Typeface.DEFAULT }
-            paint.textSize = 34f; canvas.drawText("安全運転レポート", LEFT, TOP, paint)
-            paint.textSize = 20f; canvas.drawText("日時 ${DATE_TIME.format(data.generatedAt)}   走行 ${"%.3f".format(data.distanceKm())} km   営業 ${data.trips.size}件   運賃 ${data.trips.sumOf(ReceiptData::totalFareYen)}円", LEFT, TOP + 42f, paint)
-            val graphTop = TOP + 85f; val graphBottom = graphTop + 520f
-            drawGraph(canvas, paint, data, graphTop, graphBottom)
-            paint.textSize = 22f
-            canvas.drawText("安全評価", LEFT, graphBottom + 55f, paint)
-            canvas.drawText("総合 ${rank(data.overall)} / ${score(data.overall)}点   急加速 ${operation(data.overall, true)}   急減速 ${operation(data.overall, false)}   速度超過 ${data.overall.input.overspeedEventCount}回", LEFT, graphBottom + 90f, paint)
-            canvas.drawText("道路区分別最高速度  一般 ${speed(data, RoadMode.GENERAL, true)}   高速 ${speed(data, RoadMode.HIGHWAY2, true)}", LEFT, graphBottom + 125f, paint)
-            paint.textSize = 20f; canvas.drawText("安全イベント明細", LEFT, graphBottom + 180f, paint)
-            data.events.take(14).forEachIndexed { i, e -> canvas.drawText("${i + 1}. ${e.startedAtEpochMillis?.let { DATE_TIME.format(java.time.Instant.ofEpochMilli(it)) } ?: "-"}  ${eventName(e.type.name)}  %.1f".format(e.peakValue), LEFT, graphBottom + 215f + i * 27f, paint) }
-            canvas.drawText("実車営業明細", 650f, graphBottom + 180f, paint)
-            data.trips.take(14).forEachIndexed { i, t -> canvas.drawText("${i + 1}. ${shortTime(t.pickupAt)}-${shortTime(t.dropoffAt)}  ${place(t.pickupPlace?.address)} → ${place(t.dropoffPlace?.address)}  ${t.totalFareYen}円", 650f, graphBottom + 215f + i * 27f, paint) }
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, file.outputStream())
-        } finally { bitmap.recycle() }
+            val page = pdf.startPage(PdfDocument.PageInfo.Builder(width, max(width + 1, layout.height + 16), 1).create())
+            page.canvas.translate(8f, 8f)
+            layout.draw(page.canvas)
+            pdf.finishPage(page)
+            file.outputStream().use(pdf::writeTo)
+        } finally {
+            pdf.close()
+        }
     }
-
-    private fun drawGraph(canvas: Canvas, paint: Paint, data: SafetyReportData, top: Float, bottom: Float) {
-        val left = LEFT + 55f; val right = RIGHT; val height = bottom - top
-        paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f; paint.color = 0xff222222.toInt(); canvas.drawRect(left, top, right, bottom, paint)
-        listOf(0, 20, 40, 60, 80, 90, 100, 120, 130).forEach { kmh -> paint.color = if (kmh == 60) 0xff1565c0.toInt() else if (kmh == 90) 0xff8e24aa.toInt() else if (kmh in setOf(80, 100)) 0xff9e9e9e.toInt() else 0xffdddddd.toInt(); paint.strokeWidth = if (kmh == 60 || kmh == 90) 4f else if (kmh in setOf(80, 100)) 2f else 1f; val y = bottom - height * kmh / 130f; canvas.drawLine(left, y, right, y, paint); paint.style = Paint.Style.FILL; paint.textSize = 18f; canvas.drawText("$kmh", LEFT, y + 6f, paint); paint.style = Paint.Style.STROKE }
-        val valid = data.samples.filter { it.graphSpeedMps != null }; if (valid.size < 2) return
-        val start = valid.first().timestamp.toEpochMilli().toDouble(); val end = max(start + 1, valid.last().timestamp.toEpochMilli().toDouble()); val x: (Long) -> Float = { left + ((it - start) / (end - start)).toFloat() * (right - left) }; val y: (Double) -> Float = { bottom - (it * 3.6 / 130.0).toFloat().coerceIn(0f, 1f) * height }
-        paint.color = 0xff1261a0.toInt(); paint.strokeWidth = 3f; val path = Path(); valid.forEachIndexed { i, s -> val px = x(s.timestamp.toEpochMilli()); val py = y(s.graphSpeedMps!!); if (i == 0) path.moveTo(px, py) else path.lineTo(px, py) }; canvas.drawPath(path, paint)
-        paint.style = Paint.Style.FILL; data.events.forEach { event -> valid.minByOrNull { kotlin.math.abs(it.timestamp.toEpochMilli() - (event.startedAtEpochMillis ?: Long.MIN_VALUE)) }?.let { s -> paint.color = when (event.type) { SafetyEventType.HARD_ACCELERATION -> 0xff16803c.toInt(); SafetyEventType.HARD_DECELERATION -> 0xffc62828.toInt(); SafetyEventType.OVERSPEED -> 0xffe65100.toInt() }; canvas.drawCircle(x(s.timestamp.toEpochMilli()), y(s.graphSpeedMps!!), 9f, paint) } }
-        paint.textSize = 19f; listOf("速度" to 0xff1261a0.toInt(), "急加速" to 0xff16803c.toInt(), "急減速" to 0xffc62828.toInt(), "速度超過" to 0xffe65100.toInt()).forEachIndexed { i, (label, color) -> paint.color = color; canvas.drawText(label, right - 330f + i * 82f, top - 12f, paint) }
-        paint.color = android.graphics.Color.BLACK; paint.textSize = 16f; val minutes = ((end - start) / 60_000.0).coerceAtLeast(1.0); val step = when { minutes <= 30 -> 5 else -> ((minutes / 6.0).toInt() / 5 * 5).coerceAtLeast(10) }; var t = start.toLong(); while (t <= end) { canvas.drawText(DateTimeFormatter.ofPattern("H時mm分").withZone(JST).format(java.time.Instant.ofEpochMilli(t)), x(t), bottom + 28f, paint); t += step * 60_000L }
-        paint.style = Paint.Style.FILL
-    }
-    private fun score(e: SafetyEvaluation) = e.score?.let { "%.1f".format(it) } ?: "－"
-    private fun rank(e: SafetyEvaluation) = when (e.rank) { SafetyRank.INSUFFICIENT_DATA -> "データ不足"; else -> e.rank.name }
-    private fun operation(e: SafetyEvaluation, accel: Boolean) = if (accel) "${e.input.weakAccelCount + e.input.strongAccelCount}回" else "${e.input.weakBrakeCount + e.input.strongBrakeCount}回"
-    private fun speed(data: SafetyReportData, mode: RoadMode, occupied: Boolean) = data.maxSpeed(mode, if (occupied) jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.OCCUPIED else jp.usuiensan.taxijokemeter.domain.measurement.OccupancyState.EMPTY)?.let { "${it}km/h" } ?: "－"
-    private fun eventName(name: String) = when (name) { "HARD_ACCELERATION" -> "急加速"; "HARD_DECELERATION" -> "急減速"; "OVERSPEED" -> "速度超過"; else -> name }
-    private fun shortTime(value: java.time.Instant?) = value?.let { DateTimeFormatter.ofPattern("H時mm分").withZone(JST).format(it) } ?: "-"
-    private fun place(value: String?) = value?.takeIf(String::isNotBlank)?.take(12) ?: "位置情報なし"
 }

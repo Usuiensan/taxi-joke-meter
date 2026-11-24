@@ -48,8 +48,8 @@ object ReceiptTextRenderer {
 
     private fun StringBuilder.appendPlace(label: String, at: Instant?, place: ReceiptPlaceData?) {
         val address = place?.address?.takeIf(String::isNotBlank) ?: place?.landmarkName?.takeIf(String::isNotBlank) ?: "-"
-        appendLine("$label ${at?.let(time::format) ?: "時刻不明"}  ${address.take(WIDTH - label.length - 9)}")
-        place?.landmarkName?.takeIf { it.isNotBlank() && it != place.address && address != it }?.let { appendLine("         ${it.take(WIDTH - 9)}") }
+        appendLine("$label ${at?.let(time::format) ?: "時刻不明"}  $address")
+        place?.landmarkName?.takeIf { it.isNotBlank() && it != address }?.let { appendLine("         $it") }
     }
 
     private fun StringBuilder.appendRight(label: String, value: String) {

@@ -242,7 +242,11 @@ class LocationMeasurementService : Service() {
         safetyEventRepository = SafetyEventRepository(database)
         audioCuePlayer = AudioCuePlayer({ cue -> MeterAudioResources.resourceId(this, cue) }, MediaPlayerAudioCueSink(this), safetyPlaybackGuard = jp.usuiensan.taxijokemeter.data.meter.ProcessSafetyPlaybackGuard)
         mapper = LocationSampleMapper(MeasurementQualityPolicy(20.0, Duration.ofSeconds(5)))
-        currentLocationGeocoder = GoogleReverseGeocoder(this)
+        currentLocationGeocoder = CompositeReverseGeocoder(
+            OfflineReverseGeocoder(this),
+            OrsReverseGeocoder(),
+            GoogleReverseGeocoder(this),
+        )
         placesFacilitySearcher = GooglePlacesFacilitySearcher(this)
         createNotificationChannel()
         scope.launch {

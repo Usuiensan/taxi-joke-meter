@@ -10,6 +10,8 @@ android { namespace = "jp.usuiensan.taxijokemeter"; compileSdk = 37
         applicationId = "jp.usuiensan.taxijokemeter"; minSdk = 26; targetSdk = 37; versionCode = 1; versionName = "0.1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val googleMapsApiKey = providers.gradleProperty("googleMapsApiKey").orElse(providers.gradleProperty("googleApiKey")).orElse("").get()
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
+        val orsApiKey = providers.gradleProperty("orsApiKey").orElse("").get()
+        buildConfigField("String", "ORS_API_KEY", "\"$orsApiKey\"")
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
